@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>PZ COMFY VIDEO REMOTE — ComfyLocal</title>
-<link rel="icon" href="/favicon.ico" type="image/svg+xml">
+<link rel="icon" href="/static/favicon.png" type="image/png">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
 <!-- PIN obrazovka: stejný vzhled jako původní login na webu, jen bez uživatelů. -->
 <div class="login" id="pinGate" style="{{PIN_GATE_STYLE}}">
   <form class="login-box" id="pinForm" autocomplete="on">
-    <div class="logo">⬡ PZ COMFY<div class="sub">VIDEO REMOTE · LOCAL</div></div>
+    <div class="logo">PZ COMFY<div class="sub">VIDEO REMOTE · LOCAL</div></div>
     <div class="field" id="userField" style="{{USER_FIELD_STYLE}}"><label>Uživatelské jméno</label><input name="username" id="userInput" type="text" autocomplete="username"></div>
     <div class="field"><label id="pinLabel">{{LOGIN_SECRET_LABEL}}</label><input name="pin" id="pinInput" type="password" autofocus autocomplete="current-password" required></div>
     <button class="btn primary" style="width:100%" type="submit">Vstoupit</button>
