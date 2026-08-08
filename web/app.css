@@ -447,3 +447,128 @@ body.app-cs #appLangCsBtn,body.app-en #appLangEnBtn{display:none!important}
 /* Detail jobu: akční tlačítka se na úzkém okně zalomí */
 .panel-head{flex-wrap:wrap;row-gap:8px}
 @media(max-width:900px){.panel-head .btn{flex:1 1 auto;min-width:calc(50% - 5px)}}
+
+/* ============================================================
+   POLISH PASS — jen vizuál (žádná změna ID, HTML ani JS)
+   ============================================================ */
+
+/* --- Horní lišta: jedna čistá řádka, akce vpravo --- */
+@media(min-width:1100px){
+  .top{flex-wrap:nowrap;gap:16px;padding:14px 26px}
+  .top-left{flex:0 0 auto;order:1;flex-basis:auto}
+  .top-status{flex:1 1 auto;order:2;flex-basis:auto;justify-content:flex-start}
+  .top-actions{flex:0 0 auto;order:3;flex-basis:auto;margin-left:auto;justify-content:flex-end;gap:8px}
+}
+.top-title{font-size:12.5px;letter-spacing:.14em;color:#cdc9f2}
+.top-left::before{content:"";width:9px;height:9px;border-radius:99px;background:var(--grad);
+  box-shadow:0 0 12px rgba(129,140,248,.9);flex:0 0 9px}
+.top-actions .btn{font-size:12px;letter-spacing:.02em}
+.top-actions .btn.red{font-weight:700;letter-spacing:.1em}
+
+/* --- Sidebar: značka, prázdný stav fronty, spodní nástroje --- */
+.side-head{height:72px;padding:0 20px}
+.brand{font-size:16.5px;letter-spacing:.06em;display:inline-flex;align-items:center;gap:9px}
+.brand::before{content:"";width:22px;height:22px;border-radius:8px;background:var(--grad);
+  box-shadow:var(--glow);flex:0 0 22px}
+#newVideoBtn{letter-spacing:.06em;text-transform:uppercase;font-size:12px;min-height:44px;border-radius:var(--r-sm)}
+.side .jobs{padding:14px 14px 18px;scrollbar-width:thin}
+.side .jobs:empty::after,.side .jobs .muted,.side .jobs>.small{display:block;text-align:center;color:var(--mut-2);
+  font-family:var(--mono);font-size:11px;letter-spacing:.06em;padding:22px 6px}
+.side-tools{padding:14px 14px 16px}
+.tool-grid{gap:9px}
+.tool-grid .btn{border-radius:10px;font-weight:600}
+
+/* --- Panely --- */
+.panel{border-radius:22px}
+.panel::before{opacity:.55}
+.panel-head{padding:18px 24px;background:linear-gradient(180deg,rgba(129,140,248,.06),transparent)}
+.panel-head h2{font-size:16px;letter-spacing:-.015em}
+.panel-body{padding:24px}
+.content{gap:26px}
+
+/* --- Zarovnání polí v mřížkách (popisky se nesmí rozhodit) --- */
+.grid2>.field,.grid3>.field,.grid4>.field{display:flex;flex-direction:column;margin-bottom:0}
+.grid2>.field>label,.grid3>.field>label,.grid4>.field>label{min-height:2.4em;display:flex;align-items:flex-end;line-height:1.25}
+.grid2>.field>select,.grid2>.field>input,.grid3>.field>select,.grid3>.field>input,
+.grid4>.field>select,.grid4>.field>input{margin-top:auto}
+
+/* --- Vstupy: klidnější focus, jemnější rámy --- */
+input,textarea,select{border-radius:12px}
+input:focus,textarea:focus,select:focus{box-shadow:0 0 0 3px rgba(79,70,229,.22)}
+.field label{letter-spacing:.14em}
+
+/* --- Dropzona obrázku --- */
+.empty-upload-icon{width:46px;height:46px;font-size:23px;border-radius:14px;margin-bottom:12px}
+.preview.empty-preview{font-size:12.5px}
+.preview{border-radius:16px}
+.preview.clickable-preview:hover .empty-upload-icon{filter:brightness(1.12)}
+
+/* --- Fronta --- */
+.job{border-radius:16px!important;padding:15px!important}
+.job.active{box-shadow:0 0 0 1px rgba(79,70,229,.45),0 14px 34px -22px rgba(79,70,229,.9)}
+
+/* --- Detail jobu --- */
+.detail-empty{min-height:220px;gap:12px;grid-auto-flow:row;line-height:1.6;padding:24px;text-align:center}
+.detail-title{font-size:18px}
+
+/* --- Slidery --- */
+.range-field{border-radius:14px;padding:16px 16px 18px}
+.range-label{gap:11px}
+.range-value{min-width:54px;padding:4px 12px}
+.range-field input[type=range]{height:22px}
+
+/* --- Světlý režim: dorovnání polish vrstvy --- */
+body.light .top-title{color:#2b2850}
+body.light .panel-head{background:linear-gradient(180deg,rgba(79,70,229,.05),transparent)}
+body.light .side .jobs .muted,body.light .side .jobs>.small{color:#807ea6}
+
+/* --- Světlý režim: barevné chipy a zvýraznění --- */
+body.light .chip b{color:#1f1c3d}
+body.light .chip.ok{color:#15803d;border-color:rgba(22,163,74,.35);background:rgba(22,163,74,.1)}
+body.light .chip.warn{color:#a16207;border-color:rgba(202,138,4,.35);background:rgba(202,138,4,.1)}
+body.light .chip.blue,body.light .chip.info{color:#4338ca;border-color:rgba(79,70,229,.32);background:rgba(79,70,229,.1)}
+body.light .chip.bad{color:#be123c;border-color:rgba(225,29,72,.32);background:rgba(225,29,72,.09)}
+body.light .pill.p-done{color:#15803d;border-color:rgba(22,163,74,.35);background:rgba(22,163,74,.1)}
+body.light .pill.p-error,body.light .pill.p-cancelled{color:#be123c;border-color:rgba(225,29,72,.32);background:rgba(225,29,72,.09)}
+body.light .status.done{color:#15803d;border-color:rgba(22,163,74,.35);background:rgba(22,163,74,.1)}
+body.light .status.error{color:#be123c;border-color:rgba(225,29,72,.32);background:rgba(225,29,72,.09)}
+body.light .job-num,body.light .acc-head b{color:#4f46e5}
+body.light .range-help,body.light .enhance-note{color:#6b6990}
+
+/* --- Stat chipy: čisté ukončení místo ostrého odříznutí --- */
+.top-status{position:relative}
+.stats{mask-image:linear-gradient(to right,#000 0,#000 calc(100% - 18px),transparent 100%);
+  -webkit-mask-image:linear-gradient(to right,#000 0,#000 calc(100% - 18px),transparent 100%)}
+.stats .chip{max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* --- Slidery: zarovnané hodnoty a jednotný vzhled tahadla --- */
+.range-label{min-height:56px;justify-content:space-between;gap:10px}
+.enhance-panel .range-label{min-height:auto}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:transparent;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:99px;
+  background:linear-gradient(90deg,rgba(129,140,248,.5),rgba(129,140,248,.16))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:17px;height:17px;margin-top:-5.5px;border-radius:50%;
+  background:#fff;border:3px solid var(--ac);box-shadow:0 3px 10px rgba(79,70,229,.6);transition:.14s}
+input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.08)}
+input[type=range]::-moz-range-track{height:6px;border-radius:99px;background:rgba(129,140,248,.28)}
+input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:#fff;border:3px solid var(--ac)}
+input[type=range]:focus{box-shadow:none}
+.range-scale{letter-spacing:.08em}
+body.light input[type=range]::-webkit-slider-runnable-track{background:linear-gradient(90deg,rgba(79,70,229,.45),rgba(79,70,229,.14))}
+
+/* --- Prompt Enhance karta --- */
+.enhancer-toggle{border-radius:14px;padding:14px 16px}
+.checkline{align-items:flex-start!important;gap:11px!important}
+.checkline input[type=checkbox]{margin-top:3px!important;width:16px!important}
+
+/* --- Odeslání --- */
+.worker-download-card{border-radius:14px;padding:16px}
+.worker-btn{border-radius:14px;padding:13px 14px}
+.actions{gap:12px;margin-top:14px}
+.actions .btn{min-height:44px;padding:0 20px}
+
+/* --- Slidery: popisek vlevo, hodnota vpravo (zarovnáno mezi kartami) --- */
+.range-field>.range-label{flex-direction:row;align-items:center;justify-content:space-between;
+  gap:14px;min-height:40px;line-height:1.3}
+.range-field>.range-label .range-value{flex:0 0 auto}
+.enhance-panel .range-label{flex-direction:row;align-items:center;justify-content:space-between;gap:14px}
