@@ -780,9 +780,25 @@ function hidePinGate(){const gate=$('pinGate'),wrap=$('appWrap');if(gate)gate.st
   const form=$('pinForm');if(!form)return;
   form.addEventListener('submit',async e=>{
     e.preventDefault();
-    const err=$('pinError');const fd=new FormData();fd.append('pin',$('pinInput').value||'');
+    const err=$('pinError');const fd=new FormData();fd.append('pin',$('pinInput').value||'');fd.append('password',$('pinInput').value||'');
+    const uEl=$('userInput');if(uEl)fd.append('username',uEl.value||'');
     const d=await api('login','POST',fd);
     if(d&&d.success){if(err)err.style.display='none';hidePinGate();location.reload();return}
     if(err){err.textContent=(d&&d.error)||'PIN nesedí.';err.style.display=''}
   });
 })();
+
+
+/* ── Ovládání ComfyUI a render loopu (lokální náhrada worker příkazů) ── */
+async function restartSelectedWorker(){
+  if(!confirm('Restartovat render loop? Běžící render v ComfyUI se nepřeruší, appka se k jobu vrátí.'))return;
+  const d=await api('request_worker_restart','POST',{target_worker:selectedWorker||'any',reason:'Ruční restart z UI'});
+  if(d&&d.success){alert((d.message)||'Render loop byl restartován.');await loadStats();}
+  else{alert('Restart se nepovedl: '+((d&&d.error)||'neznámá chyba'));}
+}
+async function startSelectedComfy(){
+  if(!confirm('Spustit ComfyUI na tomhle PC? Vyžaduje comfy_start_cmd v config.json.'))return;
+  const d=await api('start_comfy','POST',{target_worker:selectedWorker||'any',reason:'Ruční start ComfyUI z UI'});
+  if(d&&d.success){alert((d.message)||'ComfyUI se spouští.');await loadStats();}
+  else{alert('Start ComfyUI se nepovedl: '+((d&&d.error)||'neznámá chyba'));}
+}

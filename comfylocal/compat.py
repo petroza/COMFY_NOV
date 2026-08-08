@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse
 
-from . import db, projects as projects_mod
+from . import control, db, projects as projects_mod, users as users_mod
 from .comfy_client import IMAGE_SUFFIXES, ComfyClient, normalize_image_suffix
 from .config import CONFIG
 from .presets import camera_preset_text
@@ -52,14 +52,40 @@ def fail(message: str, code: int = 400, extra: Optional[Dict[str, Any]] = None) 
 
 
 # ── přístup ─────────────────────────────────────────────────
+def users_enabled() -> bool:
+    """Účty mají přednost před PINem — stejně jako přihlášení na webu."""
+    try:
+        return users_mod.has_users()
+    except Exception:
+        return False
+
+
 def pin_required() -> bool:
+    if users_enabled():
+        return False
     return bool(str(CONFIG.get("access_pin") or "").strip())
 
 
+def login_required() -> bool:
+    return users_enabled() or pin_required()
+
+
+def current_user(request: Request) -> Optional[Dict[str, Any]]:
+    """Přihlášený účet, nebo None. Bez účtů se chová jako dřív (admin)."""
+    if users_enabled():
+        return users_mod.user_for_token(request.cookies.get(users_mod.SESSION_COOKIE) or "")
+    if pin_required() and request.cookies.get(PIN_COOKIE) != str(CONFIG.get("access_pin")).strip():
+        return None
+    return {"id": 0, "username": "ComfyLocal", "role": "admin", "is_admin": True, "active": 1}
+
+
 def authenticated(request: Request) -> bool:
-    if not pin_required():
-        return True
-    return request.cookies.get(PIN_COOKIE) == str(CONFIG.get("access_pin")).strip()
+    return current_user(request) is not None
+
+
+def is_admin(request: Request) -> bool:
+    user = current_user(request)
+    return bool(user and user.get("is_admin"))
 
 
 # ── pomůcky ─────────────────────────────────────────────────
@@ -231,12 +257,36 @@ async def api_php(request: Request):
     action = str(request.query_params.get("action") or "").strip()
     method = request.method.upper()
 
+    if action == "has_users":
+        return ok({"has_users": users_enabled(), "pin_required": pin_required()})
+
     if action == "login":
         form = await request.form()
-        pin = str(form.get("pin") or form.get("password") or "")
+        username = clean_text(form.get("username"), 60)
+        password = str(form.get("password") or form.get("pin") or "")
+
+        # 1) Účty (jméno + heslo) — port přihlášení z webové verze.
+        if users_enabled():
+            if not username:
+                return fail("Zadejte uživatelské jméno.", 401)
+            if users_mod.throttled(username):
+                return fail("Moc mnoho pokusů. Zkus to za pár minut.", 429)
+            session = users_mod.login(username, password)
+            if not session:
+                users_mod.record_fail(username)
+                time.sleep(1)
+                return fail("Nesprávné jméno nebo heslo.", 401)
+            users_mod.clear_fails(username)
+            resp = ok({"user": session["user"], "role": session["user"]["role"],
+                       "username": session["user"]["username"], "users_enabled": True})
+            resp.set_cookie(users_mod.SESSION_COOKIE, session["token"], httponly=True,
+                            samesite="lax", max_age=60 * 60 * 24 * users_mod.SESSION_DAYS)
+            return resp
+
+        # 2) Původní režim: PIN, nebo volný přístup.
         if not pin_required():
             return ok({"pin_required": False})
-        if pin.strip() != str(CONFIG.get("access_pin")).strip():
+        if password.strip() != str(CONFIG.get("access_pin")).strip():
             time.sleep(1)
             return fail("Nesprávný PIN.", 401)
         resp = ok({"pin_required": True})
@@ -245,8 +295,10 @@ async def api_php(request: Request):
         return resp
 
     if action == "logout":
+        users_mod.logout(request.cookies.get(users_mod.SESSION_COOKIE) or "")
         resp = ok()
         resp.delete_cookie(PIN_COOKIE)
+        resp.delete_cookie(users_mod.SESSION_COOKIE)
         return resp
 
     if not authenticated(request):
@@ -260,8 +312,87 @@ async def api_php(request: Request):
 
 # ── jednotlivé akce ─────────────────────────────────────────
 async def h_me(request: Request, method: str):
-    return ok({"user": {"username": "ComfyLocal", "is_admin": True, "role": "admin"},
+    user = current_user(request) or {}
+    return ok({"user": {"username": user.get("username") or "ComfyLocal",
+                        "is_admin": bool(user.get("is_admin")),
+                        "role": user.get("role") or "user",
+                        "user_id": user.get("id") or 0},
+               "username": user.get("username") or "ComfyLocal",
+               "role": user.get("role") or "user",
+               "is_admin": bool(user.get("is_admin")),
+               "authenticated": True,
+               "users_enabled": users_enabled(),
                "version": APP_VERSION, "pin_required": pin_required()})
+
+
+# ── účty (admin) ────────────────────────────────────────────
+async def h_list_users(request: Request, method: str):
+    if not is_admin(request):
+        return fail("Jen pro správce.", 403)
+    return ok({"users": users_mod.list_users()})
+
+
+async def h_save_user(request: Request, method: str):
+    if method != "POST":
+        return fail("Method not allowed", 405)
+    if not is_admin(request):
+        return fail("Jen pro správce.", 403)
+    body = await _json_body(request)
+    try:
+        user = users_mod.save_user(
+            int(body.get("id") or 0) or None,
+            clean_text(body.get("username"), 60),
+            str(body.get("password") or ""),
+            str(body.get("role") or "user"),
+            bool(body.get("active", True)),
+        )
+    except ValueError as e:
+        return fail(str(e))
+    except Exception as e:
+        msg = str(e)
+        if "UNIQUE" in msg:
+            return fail("Takové uživatelské jméno už existuje.")
+        return fail(f"Účet se nepodařilo uložit: {msg}")
+    return ok({"user": user, "users": users_mod.list_users()})
+
+
+async def h_delete_user(request: Request, method: str):
+    if method != "POST":
+        return fail("Method not allowed", 405)
+    if not is_admin(request):
+        return fail("Jen pro správce.", 403)
+    body = await _json_body(request)
+    user_id = int(body.get("id") or 0)
+    if not user_id:
+        return fail("ID chybí.")
+    me = current_user(request) or {}
+    if int(me.get("id") or 0) == user_id:
+        return fail("Vlastní účet smazat nejde.")
+    admins = [u for u in users_mod.list_users() if u["is_admin"] and u["active"]]
+    if len(admins) <= 1 and any(u["id"] == user_id for u in admins):
+        return fail("Musí zůstat alespoň jeden aktivní správce.")
+    users_mod.delete_user(user_id)
+    return ok({"users": users_mod.list_users()})
+
+
+# ── ovládání ComfyUI a render loopu ─────────────────────────
+async def h_start_comfy(request: Request, method: str):
+    if method != "POST":
+        return fail("Method not allowed", 405)
+    result = control.start_comfy()
+    if not result.get("success"):
+        return fail(str(result.get("error") or "Start ComfyUI selhal."), 409)
+    return ok(result)
+
+
+async def h_restart_worker(request: Request, method: str):
+    if method != "POST":
+        return fail("Method not allowed", 405)
+    return ok(control.restart_runner())
+
+
+async def h_control_status(request: Request, method: str):
+    return ok({"control": control.status(), "workers": workers_payload()})
 
 
 async def h_translate_prompt(request: Request, method: str):
@@ -865,8 +996,12 @@ HANDLERS = {
     "cleanup_uploads": h_cleanup_uploads,
     "stats": h_stats,
     "diagnostics": h_diagnostics,
-    "request_comfy_start": h_worker_unavailable,
-    "request_comfyui_start": h_worker_unavailable,
-    "start_comfy": h_worker_unavailable,
-    "request_worker_restart": h_worker_unavailable,
+    "request_comfy_start": h_start_comfy,
+    "request_comfyui_start": h_start_comfy,
+    "start_comfy": h_start_comfy,
+    "request_worker_restart": h_restart_worker,
+    "control_status": h_control_status,
+    "list_users": h_list_users,
+    "save_user": h_save_user,
+    "delete_user": h_delete_user,
 }

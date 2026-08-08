@@ -43,7 +43,14 @@ DEFAULTS: Dict[str, Any] = {
     "open_browser": True,
 
     # Volitelný PIN pro přístup z ostatních strojů v síti. Prázdné = bez přihlášení.
+    # Když v databázi existuje aspoň jeden aktivní účet, má přednost přihlášení
+    # jménem a heslem (Admin → Uživatelé) a PIN se přeskočí.
     "access_pin": "",
+
+    # Spuštění ComfyUI z UI (tlačítko „Spustit ComfyUI"). Příkaz se pouští
+    # na tomhle PC ve složce comfy_dir. Prázdné = tlačítko jen napoví.
+    "comfy_start_cmd": "",
+    "comfy_dir": "",
 
     # Výchozí video šablony. Zdrojové projekty z ComfyUI, ze kterých jsou
     # vyexportované, leží v docs/comfyui_projects/. Photo edit šablony

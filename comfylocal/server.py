@@ -10,8 +10,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import db, projects as projects_mod
-from .compat import APP_VERSION, PIN_COOKIE, authenticated, pin_required, router as api_router
+from . import db, projects as projects_mod, users as users_mod
+from .compat import (APP_VERSION, PIN_COOKIE, authenticated, is_admin, login_required,
+                     pin_required, router as api_router, users_enabled)
 from .config import CONFIG
 from .logging_setup import configure_logging
 from .runner import get_runner, start_runner
@@ -43,7 +44,11 @@ async def index(request: Request) -> Response:
     locked = not authenticated(request)
     html = html.replace("{{PIN_GATE_STYLE}}", "display:grid" if locked else "display:none")
     html = html.replace("{{APP_STYLE}}", "display:none" if locked else "")
-    html = html.replace("{{PIN_REQUIRED}}", "true" if pin_required() else "false")
+    html = html.replace("{{PIN_REQUIRED}}", "true" if login_required() else "false")
+    with_users = users_enabled()
+    html = html.replace("{{USER_FIELD_STYLE}}", "" if with_users else "display:none")
+    html = html.replace("{{LOGIN_SECRET_LABEL}}", "Heslo" if with_users else "PIN")
+    html = html.replace("{{ADMIN_BTN_STYLE}}", "" if is_admin(request) else "display:none")
     html = html.replace("{{APP_VERSION}}", APP_VERSION)
     html = html.replace("{{COMFY_URL}}", CONFIG.comfy_base)
     return HTMLResponse(html)
@@ -53,6 +58,17 @@ async def index(request: Request) -> Response:
 async def app_php_alias() -> Response:
     """Původní web běžel na app.php — ať funguje i starý bookmark."""
     return RedirectResponse("/")
+
+
+@app.get("/admin")
+async def admin_page(request: Request) -> Response:
+    """Admin panel: účty, ovládání ComfyUI a přehled projektů."""
+    if not authenticated(request):
+        return RedirectResponse("/")
+    if not is_admin(request):
+        return HTMLResponse("<h1>403</h1><p>Admin panel je jen pro správce.</p>", status_code=403)
+    html = (WEB_DIR / "admin.html").read_text(encoding="utf-8")
+    return HTMLResponse(html.replace("{{APP_VERSION}}", APP_VERSION))
 
 
 @app.get("/setup")
@@ -262,9 +278,11 @@ async def log_download(request: Request):
 
 
 @app.post("/logout")
-async def logout() -> Response:
+async def logout(request: Request) -> Response:
+    users_mod.logout(request.cookies.get(users_mod.SESSION_COOKIE) or "")
     resp = RedirectResponse("/", status_code=303)
     resp.delete_cookie(PIN_COOKIE)
+    resp.delete_cookie(users_mod.SESSION_COOKIE)
     return resp
 
 
@@ -280,6 +298,7 @@ async def on_startup() -> None:
     configure_logging()
     setup_tls()
     db.init()
+    users_mod.ensure_schema()
     projects_mod.sync_projects()
     start_runner()
     log.info("ComfyLocal %s běží — ComfyUI: %s (API %s)",

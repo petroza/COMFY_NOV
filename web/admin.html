@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Admin — PZ COMFY VIDEO REMOTE</title>
+<link rel="icon" href="/favicon.ico" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="app">
+<main class="main">
+  <div class="top">
+    <div class="top-left"><div class="top-title">ADMIN · ÚČTY A OVLÁDÁNÍ</div></div>
+    <div class="top-status"><span class="chip" id="meChip">…</span></div>
+    <div class="top-actions">
+      <a class="btn blue" href="/">App</a>
+      <a class="btn ghost" href="/setup">Setup</a>
+      <form method="post" action="/logout" style="display:contents"><button class="btn ghost" type="submit">Odhlásit</button></form>
+    </div>
+  </div>
+  <div class="content">
+
+    <section class="panel">
+      <div class="panel-head"><h2>Uživatelé</h2></div>
+      <div class="panel-body">
+        <p class="small">Dokud tu není žádný aktivní účet, appka jede v původním režimu (volný přístup, případně PIN
+          z config.json). Jakmile vznikne první účet, přihlašuje se jménem a heslem.</p>
+        <form id="userForm" class="grid4" style="align-items:end">
+          <input type="hidden" id="userId" value="">
+          <div class="field"><label>Jméno</label><input id="uName" type="text" autocomplete="off" required></div>
+          <div class="field"><label>Heslo <span class="small">(při úpravě prázdné = nemění se)</span></label><input id="uPass" type="password" autocomplete="new-password"></div>
+          <div class="field"><label>Role</label><select id="uRole"><option value="user">user</option><option value="admin">admin</option></select></div>
+          <div class="field"><label>Stav</label><select id="uActive"><option value="1">aktivní</option><option value="0">vypnutý</option></select></div>
+          <div class="actions" style="grid-column:1/-1">
+            <button class="btn primary" type="submit">Uložit účet</button>
+            <button class="btn ghost" type="button" onclick="resetUserForm()">Nový</button>
+            <span class="small" id="userMsg"></span>
+          </div>
+        </form>
+        <div id="usersList" style="margin-top:16px"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>ComfyUI a render loop</h2></div>
+      <div class="panel-body">
+        <div class="status-line" id="controlLine">…</div>
+        <div class="actions">
+          <button class="btn blue" type="button" onclick="doStartComfy()">Spustit ComfyUI</button>
+          <button class="btn ghost" type="button" onclick="doRestartRunner()">Restartovat render loop</button>
+        </div>
+        <p class="small">Spuštění ComfyUI používá <code>comfy_start_cmd</code> (a volitelně <code>comfy_dir</code>)
+          z <code>config.json</code>. Vše běží jen v lokální síti — žádné FTP, žádný vzdálený worker.</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Projekty / workflow</h2></div>
+      <div class="panel-body"><div id="projectsList">…</div></div>
+    </section>
+
+  </div>
+</main>
+</div>
+<script>
+const API='/api.php';
+async function api(action,method='GET',body=null){
+  const opt={method,credentials:'same-origin',headers:{}};
+  if(body){opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(body)}
+  try{const r=await fetch(`${API}?action=${action}`,opt);const t=await r.text();
+    try{return t?JSON.parse(t):{}}catch(e){return {success:false,error:'Nečitelná odpověď serveru'}}
+  }catch(e){return {success:false,error:'Síťová chyba: '+e.message}}
+}
+function esc(v){return String(v==null?'':v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function resetUserForm(){document.getElementById('userId').value='';document.getElementById('uName').value='';
+  document.getElementById('uPass').value='';document.getElementById('uRole').value='user';document.getElementById('uActive').value='1';}
+function editUser(u){document.getElementById('userId').value=u.id;document.getElementById('uName').value=u.username;
+  document.getElementById('uPass').value='';document.getElementById('uRole').value=u.role;
+  document.getElementById('uActive').value=String(u.active?1:0);window.scrollTo({top:0,behavior:'smooth'});}
+let USERS=[];
+function renderUsers(list){
+  USERS=list||[];
+  const box=document.getElementById('usersList');
+  if(!USERS.length){box.innerHTML='<div class="small">Žádné účty — appka jede v původním režimu.</div>';return}
+  box.innerHTML='<table class="tbl" style="width:100%;border-collapse:collapse">'+
+    '<tr><th align="left">Jméno</th><th align="left">Role</th><th align="left">Stav</th><th align="left">Poslední přihlášení</th><th></th></tr>'+
+    USERS.map((u,i)=>`<tr><td>${esc(u.username)}</td><td>${esc(u.role)}</td><td>${u.active?'aktivní':'vypnutý'}</td>`+
+      `<td class="small">${esc(u.last_login||'—')}</td>`+
+      `<td align="right"><button class="btn ghost" onclick="editUser(USERS[${i}])">Upravit</button> `+
+      `<button class="btn red" onclick="removeUser(${u.id})">Smazat</button></td></tr>`).join('')+'</table>';
+}
+async function loadUsers(){const d=await api('list_users');
+  if(d.success)renderUsers(d.users);else document.getElementById('usersList').innerHTML='<div class="small">'+esc(d.error||'Nelze načíst')+'</div>';}
+async function removeUser(id){if(!confirm('Smazat účet?'))return;const d=await api('delete_user','POST',{id});
+  if(d.success)renderUsers(d.users);else alert(d.error||'Smazání selhalo');}
+document.getElementById('userForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const payload={id:parseInt(document.getElementById('userId').value||'0',10)||0,
+    username:document.getElementById('uName').value.trim(),
+    password:document.getElementById('uPass').value,
+    role:document.getElementById('uRole').value,
+    active:document.getElementById('uActive').value==='1'};
+  const d=await api('save_user','POST',payload);
+  const msg=document.getElementById('userMsg');
+  if(d.success){msg.textContent='Uloženo.';renderUsers(d.users);resetUserForm()}else{msg.textContent=d.error||'Nepodařilo se uložit'}
+});
+async function loadControl(){
+  const d=await api('control_status');
+  const line=document.getElementById('controlLine');
+  if(!d.success){line.textContent=d.error||'Stav nelze načíst';return}
+  const w=Object.values(d.workers||{})[0]||{};
+  const comfy=(w.comfy||{});
+  line.innerHTML=`<span class="chip ${comfy.online?'ok':'bad'}">ComfyUI: ${comfy.online?'online':'offline'}</span>`+
+    `<span class="chip">${esc(comfy.url||'')}</span>`+
+    `<span class="chip">${d.control.can_start?'start příkaz nastaven':'comfy_start_cmd chybí'}</span>`+
+    (d.control.process_running?'<span class="chip">proces ComfyUI běží z appky</span>':'');
+}
+async function doStartComfy(){const d=await api('start_comfy','POST',{});alert(d.message||d.error||'');loadControl();}
+async function doRestartRunner(){if(!confirm('Restartovat render loop?'))return;const d=await api('request_worker_restart','POST',{});alert(d.message||d.error||'');loadControl();}
+async function loadProjects(){const d=await api('projects');const box=document.getElementById('projectsList');
+  if(!d.success){box.innerHTML='<div class="small">'+esc(d.error||'Nelze načíst')+'</div>';return}
+  box.innerHTML='<table class="tbl" style="width:100%;border-collapse:collapse"><tr><th align="left">Projekt</th><th align="left">Vstup</th><th align="left">Workflow</th></tr>'+
+    (d.projects||[]).map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.input_type)}</td><td class="small">${esc(p.workflow_file||'—')}</td></tr>`).join('')+'</table>';}
+async function loadMe(){const d=await api('me');if(d.success)document.getElementById('meChip').innerHTML=esc(d.username)+' <b>'+esc(d.role)+'</b>';}
+loadMe();loadUsers();loadControl();loadProjects();
+setInterval(loadControl,15000);
+</script>
+</body>
+</html>
