@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Setup — ComfyLocal</title>
+<link rel="icon" href="/favicon.ico" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="app" style="grid-template-columns:1fr">
+<main class="main">
+  <div class="top">
+    <div class="top-left"><div class="top-title">SETUP · ComfyLocal {{APP_VERSION}}</div></div>
+    <div class="top-status"><div class="stats" id="stats"></div></div>
+    <div class="top-actions">
+      <a class="btn blue" href="/">App</a>
+      <button class="btn ghost" onclick="load()">Obnovit</button>
+    </div>
+  </div>
+  <div class="content" style="grid-template-columns:1fr">
+    <section class="panel">
+      <div class="panel-head"><h2>Adresa ComfyUI</h2></div>
+      <div class="panel-body">
+        <form id="comfyForm" style="display:grid;gap:12px">
+          <div class="grid2 compact">
+            <div class="field">
+              <label>Adresa ComfyUI <small class="small">(odsud se servírují soubory)</small></label>
+              <input id="comfyUrl" placeholder="https://viz-proxy-dev.nova.group/comfy/">
+            </div>
+            <div class="field">
+              <label>Předpona API <small class="small">(na proxy „api" → /comfy/api/)</small></label>
+              <input id="comfyApiPath" placeholder="api">
+            </div>
+          </div>
+          <div class="grid3 compact">
+            <div class="field"><label>Timeout (s)</label><input id="comfyTimeout" type="number" min="5" max="600" step="5"></div>
+            <div class="field"><label class="checkline" style="margin-top:18px"><input id="comfyVerifyTls" type="checkbox"><span>Ověřovat TLS certifikát</span></label></div>
+            <div class="field"><label class="checkline" style="margin-top:18px"><input id="translatePrompt" type="checkbox"><span>Překládat prompt CZ→EN</span></label></div>
+          </div>
+          <div class="grid2 compact">
+            <div class="field"><label class="checkline" style="margin-top:18px"><input id="useSystemTrustStore" type="checkbox"><span>Věřit systémovému úložišti certifikátů</span></label></div>
+            <div class="field"><label>Vlastní CA balíček <small class="small">(cesta k .pem/.crt, nepovinné)</small></label><input id="comfyCaBundle" placeholder="napr. C:\firma\ca.pem"></div>
+          </div>
+          <p class="small" id="tlsMode"></p>
+          <div class="actions" style="justify-content:flex-start">
+            <button class="btn ghost" type="button" onclick="testUrl()">Vyzkoušet spojení</button>
+            <button class="btn primary" type="submit">Uložit a použít</button>
+          </div>
+          <div class="lang-status" id="saveStatus"></div>
+          <p class="small">Uloží se do <b>config.json</b> a použije se hned, bez restartu aplikace.
+            Fragment <code>#…</code> z adresního řádku ComfyUI se zahazuje — je to jen ID workflow v jeho UI.
+            Do adresy patří <b>/comfy/</b> (bez <code>/api/</code>); předponu API řeší druhé pole.</p>
+        </form>
+        <div class="diag-grid" id="comfyBox" style="margin-top:14px"></div>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>Workflow ve složce workflows/</h2></div>
+      <div class="panel-body"><div class="diag-grid" id="wfBox"></div></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>Cesty a data</h2></div>
+      <div class="panel-body"><div class="diag-grid" id="pathBox"></div></div>
+    </section>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Log</h2>
+        <div class="actions" style="justify-content:flex-end">
+          <button class="btn ghost" type="button" onclick="loadLog()">Načíst konec logu</button>
+          <a class="btn blue" href="/api/log/download">Stáhnout log</a>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="diag-grid" id="logBox"></div>
+        <p class="small">Do logu jde to samé, co se vypisuje v okně appky — ale přežije to zavření okna
+          i restart. Když něco spadne, tenhle soubor je to, co je potřeba k dohledání příčiny.
+          Rotuje po 5 MB, drží se 5 starších kusů.</p>
+        <pre class="full-prompt-text" id="logText" style="white-space:pre-wrap;max-height:420px;overflow:auto"></pre>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>config.json</h2></div>
+      <div class="panel-body">
+        <p class="small">Konfigurace se needituje z prohlížeče — je to jeden soubor <b>config.json</b> vedle
+          <b>START_WINDOWS.bat</b>. Po úpravě appku restartuj. PIN se tady nezobrazuje.</p>
+        <pre class="full-prompt-text" id="configBox" style="white-space:pre-wrap"></pre>
+      </div>
+    </section>
+  </div>
+</main>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function rows(box,items){box.innerHTML=items.map(([k,v,cls])=>
+  `<div>${esc(k)}</div><div class="${cls||''}"><b>${esc(v)}</b></div><div></div>`).join('')}
+
+async function load(){
+  const r=await fetch('/api/setup');
+  const d=await r.json();
+  if(!d.success){document.body.innerHTML='<div class="login"><div class="login-box">'+esc(d.error||'Nepřihlášeno')+
+    ' — <a href="/">zpět do aplikace</a></div></div>';return}
+  const c=d.comfy;
+  $('stats').innerHTML=`<span class="chip ${c.online?'ok':'bad'}">ComfyUI ${c.online?'online':'offline'}</span>`+
+    `<span class="chip">fronta: ${d.queue.active_total||0}</span><span class="chip">hotovo dnes: ${d.queue.done_today||0}</span>`;
+  rows($('comfyBox'),[
+    ['Adresa (soubory /view)',c.url,'diag-ok'],
+    ['API endpointy',c.api_base,'diag-ok'],
+    ['WebSocket',c.ws_url,'diag-ok'],
+    ['Stav',c.online?'online':'offline',c.online?'diag-ok':'diag-bad'],
+    ['Právě používaná API báze',c.resolved_api_base],
+    ['Právě používaná báze souborů',c.resolved_files_base],
+    ['PIN',d.pin_required?'zapnutý':'vypnutý (otevřeno v síti)',d.pin_required?'diag-ok':'diag-warn'],
+  ]);
+  $('wfBox').innerHTML=d.workflows.map(w=>
+    `<div>${esc(w.name)}</div><div class="${w.error?'diag-bad':'diag-ok'}"><b>${esc(w.error?'CHYBA':w.kind)}</b></div>`+
+    `<div>${esc(w.error||((w.nodes||0)+' nodů'))}</div>`).join('')+
+    d.projects.map(p=>`<div>projekt: ${esc(p.name)}</div><div class="diag-ok"><b>AKTIVNÍ</b></div><div>${esc(p.workflow_file)}</div>`).join('');
+  rows($('pathBox'),Object.entries(d.paths));
+  $('configBox').textContent=JSON.stringify(d.config,null,2);
+
+  const lg=d.log||{};
+  const kb=lg.size_bytes?(lg.size_bytes/1024).toFixed(1)+' kB':'prázdný';
+  rows($('logBox'),[
+    ['Zapisování do souboru',lg.enabled?'zapnuté':'vypnuté',lg.enabled?'diag-ok':'diag-warn'],
+    ['Soubor',lg.path||'—',lg.exists?'diag-ok':'diag-warn'],
+    ['Velikost',lg.exists?kb:'soubor zatím nevznikl'],
+    ['Úroveň',lg.level||'INFO'],
+  ]);
+
+  $('comfyUrl').value=c.url ? c.url.replace(/\/?$/,'/') : '';
+  $('comfyApiPath').value=(d.config.comfy_api_path??'api');
+  $('comfyTimeout').value=(d.config.comfy_timeout??60);
+  $('comfyVerifyTls').checked=d.config.comfy_verify_tls!==false;
+  $('translatePrompt').checked=d.config.translate_prompt!==false;
+  $('useSystemTrustStore').checked=d.config.use_system_trust_store!==false;
+  $('comfyCaBundle').value=d.config.comfy_ca_bundle||'';
+  $('tlsMode').textContent='Ověřování TLS: '+(d.tls_mode||'?')+
+    ' — interní firemní certifikát projde v prohlížeči, ale Python má vlastní seznam autorit;'+
+    ' proto se používá systémové úložiště. Když ani to nepomůže, dej cestu k CA balíčku,'+
+    ' teprve jako poslední možnost ověřování vypni.';
+}
+
+function status(msg,cls){const box=$('saveStatus');box.className='lang-status show '+(cls||'');box.innerHTML=msg}
+
+async function loadLog(){
+  const box=$('logText');
+  box.textContent='Načítám…';
+  try{
+    const r=await fetch('/api/log?lines=400');
+    box.textContent=await r.text();
+    box.scrollTop=box.scrollHeight;
+  }catch(e){box.textContent='Log se nepodařilo načíst: '+e}
+}
+
+function formPayload(){return{
+  comfy_url:$('comfyUrl').value.trim(),
+  comfy_api_path:$('comfyApiPath').value.trim(),
+  comfy_timeout:+$('comfyTimeout').value||60,
+  comfy_verify_tls:$('comfyVerifyTls').checked,
+  translate_prompt:$('translatePrompt').checked,
+}}
+
+async function post(url,payload){
+  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  return r.json();
+}
+
+async function testUrl(){
+  status('Zkouším spojení…');
+  const d=await post('/api/setup/test',formPayload());
+  const lines=(d.checks||[]).map(c=>`${c.ok?'✅':'⚠️'} ${esc(c.name)} — ${esc(c.detail)}`).join('<br>');
+  if(d.success)status(`<b>ComfyUI odpovídá.</b><br>API: ${esc(d.api_base)}<br>${lines}`,'ok');
+  else status(`<b>Nepovedlo se.</b> ${esc(d.error||'')}<br>${lines}`,'err');
+}
+
+$('comfyForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  status('Ukládám…');
+  const d=await post('/api/setup',formPayload());
+  if(!d.success){status('<b>Neuloženo.</b> '+esc(d.error||''),'err');return}
+  status(`<b>${esc(d.message)}</b><br>API: ${esc(d.comfy.api_base)}<br>WS: ${esc(d.comfy.ws_url)}`,d.comfy.online?'ok':'err');
+  await load();
+});
+
+load();
+</script>
+</body>
+</html>

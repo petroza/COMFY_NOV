@@ -1,0 +1,16 @@
+# lokální konfigurace a data
+config.json
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# python
+.venv/
+__pycache__/
+*.py[cod]
+.deps_ok
+
+# systém
+.DS_Store
+Thumbs.db

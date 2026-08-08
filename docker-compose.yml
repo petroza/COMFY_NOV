@@ -1,0 +1,27 @@
+# Nasazení ComfyLocal v kontejneru — pro provoz na serveru, kde si nikdo nic
+# neinstaluje. Přihlašování se řeší reverse proxy před appkou (viz README).
+services:
+  comfylocal:
+    build: .
+    container_name: comfylocal
+    restart: unless-stopped
+    ports:
+      # Vlevo port na hostiteli. Když před tím stojí SSO proxy, klidně
+      # nastav "127.0.0.1:8770:8770", aby appka nebyla vidět přímo ze sítě.
+      - "8770:8770"
+    environment:
+      # Adresa ComfyUI, na které appka renderuje. Bez /api/ na konci —
+      # předponu API řeší comfy_api_path (výchozí "api").
+      COMFY_URL: "${COMFY_URL:-https://viz-proxy-dev.nova.group/comfy/}"
+      # Volitelný PIN. Když je před appkou firemní přihlášení, nechej prázdný.
+      COMFYLOCAL_PIN: "${COMFYLOCAL_PIN:-}"
+      # Interní certifikát: 0 vypne ověřování TLS.
+      COMFYLOCAL_VERIFY_TLS: "${COMFYLOCAL_VERIFY_TLS:-1}"
+    volumes:
+      # Fronta, uploady a hotová videa. Bez tohohle se po redeploy ztratí.
+      - comfylocal-data:/app/data
+      # Workflow šablony ať jdou měnit bez rebuildu image.
+      - ./workflows:/app/workflows:ro
+
+volumes:
+  comfylocal-data:

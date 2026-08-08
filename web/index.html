@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PZ COMFY VIDEO REMOTE — ComfyLocal</title>
+<link rel="icon" href="/favicon.ico" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<!-- PIN obrazovka: stejný vzhled jako původní login na webu, jen bez uživatelů. -->
+<div class="login" id="pinGate" style="{{PIN_GATE_STYLE}}">
+  <form class="login-box" id="pinForm" autocomplete="on">
+    <div class="logo">⬡ PZ COMFY<div class="sub">VIDEO REMOTE · LOCAL</div></div>
+    <div class="field"><label>PIN</label><input name="pin" id="pinInput" type="password" autofocus autocomplete="current-password" required></div>
+    <button class="btn primary" style="width:100%" type="submit">Vstoupit</button>
+    <div class="err" id="pinError" style="display:none"></div>
+  </form>
+</div>
+<div class="mobile-mask" id="mask" onclick="toggleSide(false)"></div>
+<div class="app" id="appWrap" style="{{APP_STYLE}}">
+<aside class="side" id="side"><div class="side-head"><div class="brand">PZ COMFY</div><div class="side-head-right"><div class="app-lang-switch" id="appLangSwitch"><button type="button" class="flag-btn active" id="appLangCsBtn" title="Čeština" onclick="setAppLang('cs')"><span class="flag-cz"></span></button><button type="button" class="flag-btn" id="appLangEnBtn" title="English" onclick="setAppLang('en')"><span class="flag-us"></span></button></div></div></div><div style="padding:10px"><button id="newVideoBtn" class="btn primary" style="width:100%" onclick="newJobForm();toggleSide(false)">+ Nové video</button></div><div class="jobs" id="jobs"></div><div class="side-tools"><div class="tool-grid"><button id="selectAllBtn" class="btn ghost" onclick="selectAllJobs()">Vybrat vše</button><button id="selectFinishedBtn" class="btn ghost" onclick="selectFinishedJobs()">Označit hotové</button><button id="clearSelectionBtn" class="btn ghost wide" onclick="clearSelection()">Zrušit výběr</button><button id="downloadSelectedBtn" class="btn blue" onclick="downloadSelectedJobs()">Stáhnout označené</button><button id="downloadFinishedBtn" class="btn blue" onclick="downloadFinishedJobs()">Stáhnout hotové</button><button id="deleteSelectedBtn" class="btn red" onclick="deleteSelectedJobs()">Smazat označené</button><button id="clearFinishedBtn" class="btn red" onclick="clearFinished()">Smazat hotové</button></div><div class="sel-info" id="selInfo">Označeno: 0</div></div></aside>
+<main class="main">
+<div class="top"><div class="top-left"><button class="btn hamb" onclick="toggleSide(true)">☰</button><div class="top-title">PZ COMFY VIDEO REMOTE</div></div><div class="top-status"><span id="userChip" class="chip">ComfyLocal <b>v{{APP_VERSION}}</b></span><div class="stats" id="stats"><span class="chip">ComfyUI: --</span></div></div><div class="top-actions"><button class="btn ghost lux-theme-toggle" id="themeToggle" onclick="toggleTheme()"><span class="moon">Světlý režim</span><span class="sun">Tmavý režim</span></button><a class="btn blue worker-top" id="comfyTopBtn" href="{{COMFY_URL}}" target="_blank" rel="noopener">ComfyUI</a><button id="diagBtn" class="btn ghost" onclick="openDiagnostics()">Diagnostika</button><button id="appViewBtn" class="btn blue" onclick="newJobForm()">App</button><a id="setupViewBtn" class="btn ghost" href="/setup">Setup</a><form method="post" action="/logout" style="display:contents"><button id="logoutBtn" class="btn ghost" type="submit" title="Odhlásit se">Odhlásit</button></form><button id="stopBtn" class="btn red" type="button" onclick="cancelSelectedJobs()">STOP</button></div></div>
+<div class="content">
+<section class="panel form-panel" id="formPanel"><div class="panel-head"><h2 id="formTitle">Nový LTX image‑to‑video job</h2></div><div class="panel-body">
+<div class="projects-bar" id="projectsBar" style="display:none"><span class="projects-label">Model:</span><div id="projectCards" style="display:flex;gap:8px;flex-wrap:wrap"></div></div>
+<input type="hidden" id="selectedProjectId" value="">
+<form id="jobForm">
+<div class="form-accordion">
+  <section class="acc open closed" data-key="basic">
+    <button type="button" class="acc-head" onclick="toggleAcc(this)"><span>01 Základ</span><b>▾</b></button>
+    <div class="acc-body">
+      <div class="mode-tabs"><button type="button" class="mode-btn active" id="mode1Btn" onclick="setPictModeFTP('1')">1 PICT</button><button type="button" class="mode-btn" id="mode2Btn" onclick="setPictModeFTP('2')">2 PICT</button></div>
+      <input type="hidden" id="selectedProjectId" value="">
+      <div class="field"><label>Projekt / workflow</label><select id="project" onchange="selectProjectFromDropdown()"><option value="">Výchozí LTX</option></select></div>
+      <div class="image-grid" id="imageGrid"><div id="imageSection" class="field image-field"><label id="image1Label">Vstupní obrázek</label><div class="preview clickable-preview empty-preview" id="imgPreview" title="Klepni pro výběr / změnu fotky" role="button" aria-label="Vybrat nebo změnit vstupní obrázek"><div class="empty-upload"><div class="empty-upload-icon">＋</div><div>Vybrat nebo přetáhnout obrázek</div><small>JPG / PNG / WEBP</small></div></div><input id="imageInput" type="file" name="image" accept="image/png,image/jpeg,image/webp" multiple hidden></div><div id="image2Section" class="field image-field hidden"><label>Poslední frejm</label><div class="preview clickable-preview empty-preview" id="imgPreview2" title="Klepni pro výběr posledního frejmu" role="button" aria-label="Vybrat poslední frejm"><div class="empty-upload"><div class="empty-upload-icon">＋</div><div>Vybrat poslední frejm</div><small>JPG / PNG / WEBP</small></div></div><input id="imageInput2" type="file" name="image2" accept="image/png,image/jpeg,image/webp" hidden></div></div>
+    </div>
+  </section>
+  <section class="acc open closed" data-key="prompt">
+    <button type="button" class="acc-head" onclick="toggleAcc(this)"><span>02 Prompt</span><b>▾</b></button>
+    <div class="acc-body">
+      <div class="field"><label>Prompt</label><div class="prompt-wrap"><textarea id="promptInput" name="prompt" rows="4" placeholder="česky: filmový realistický záběr, pomalý pohyb kamery..."></textarea><button type="button" id="promptClearBtn" class="prompt-clear-btn hidden" aria-label="Smazat prompt" title="Smazat text">×</button></div></div>
+      <div class="flag-row lang-switch prompt-lang-cs-only" id="promptLangRow"><span id="promptLangLabel" class="small">Jazyk promptu</span><button type="button" class="flag-btn active" id="langCsBtn" onclick="setPromptLang('cs')"><span class="flag-cz"></span></button><button type="button" class="flag-btn" id="langEnBtn" onclick="setPromptLang('en')"><span class="flag-us"></span></button><span class="hint" id="langHint">CZ → EN automaticky na pozadí</span></div>
+      <div class="lang-status" id="translationPreview"></div>
+      <div class="field"><label>Negative prompt</label><textarea id="negativeInput" name="negative_prompt" rows="3">shaky camera, jitter, stutter, flicker, morphing, warping, distortion, motion smear, motion artifacts, frame blending, temporal artifacts, deformed, disfigured, ugly, low quality, worst quality, blurry, jpeg artifacts, watermark, text overlay, logo, transition, frozen frame</textarea></div>
+    </div>
+  </section>
+  <section class="acc open closed" data-key="motion">
+    <button type="button" class="acc-head" onclick="toggleAcc(this)"><span>03 Kamera a styl</span><b>▾</b></button>
+    <div class="acc-body">
+      <div class="grid3 tight"><div class="field"><label>Pohyb kamery — preset</label><select id="preset" name="preset"><option>Decentní nájezd dopředu</option><option>Pomalý nájezd dopředu</option><option>Pomalý odjezd dozadu</option><option>Obíhání kolem objektu</option><option>Půlkruhový oblouk</option><option>Stoupání kamery (dron nahoru)</option><option>Klesání kamery (pohled dolů)</option><option>Jeřáb nahoru</option><option>Jeřáb dolů</option><option>Pomalý posun do strany</option><option selected>Statická kamera (stativ)</option><option>Jemný posun (drobný drift)</option><option>Z ruky (dokumentární)</option><option>Vlastní</option></select></div><div class="field"><label>Style preset</label><select id="style" name="style"><option value="None">None</option><option>Cinematic</option><option>Realistic</option><option>Documentary / News</option><option>Fashion / Product</option><option>Music video</option></select></div><div class="field"><label>Rozlišení preset</label><select id="format"><option value="auto_fhd" selected>Auto podle fotky · FHD limit</option><option value="fhd_landscape">FHD horizontal · 1920×1088</option><option value="fhd_portrait">FHD vertical · 1088×1920</option><option value="classic_4_3">4:3 · 1472×1088</option><option value="classic_3_4">3:4 · 1088×1472</option><option value="hd_landscape">HD horizontal · 1280×720</option><option value="hd_portrait">HD vertical · 720×1280</option><option value="square">Square · 1024×1024</option><option value="square_2000">Square XL · 1984×1984</option><option value="custom">Custom</option></select></div></div>
+      <div class="field"><label>Camera motion</label><input id="camera" value="the camera holds completely still on a locked-off tripod, no camera movement, only the subject and the environment evolve over time"></div>
+      <div class="field"><label>Style</label><input id="styleText" value=""></div>
+    </div>
+  </section>
+  <section class="acc open closed" data-key="format">
+    <button type="button" class="acc-head" onclick="toggleAcc(this)"><span>04 Video parametry</span><b>▾</b></button>
+    <div class="acc-body"><div class="grid2 compact"><div class="field"><label>Šířka</label><input id="width" type="number" value="1920" min="256" max="4096" step="8"></div><div class="field"><label>Výška</label><input id="height" type="number" value="1080" min="256" max="4096" step="8"></div></div><div class="grid3 compact"><div class="field"><label>FPS</label><select id="fps"><option>24</option><option selected>25</option><option>30</option><option>50</option></select></div><div class="field"><label>Délka s</label><input id="duration" type="number" value="5" min="1" max="60" step="0.5"></div><div class="field"><label>Seed</label><input id="seed" placeholder="random"></div></div><div class="seed-row compact"><div class="field"><label>Režim seedu</label><select id="seedMode"><option value="increment_batch" selected>Batch: navyšovat seed</option><option value="locked">Zamknout stejný seed</option><option value="random_each">Náhodný pro každý obrázek</option></select></div><div class="field"><label>&nbsp;</label><button class="btn ghost" type="button" onclick="freshSeed();updateMobSummary()">Nový seed</button></div></div></div>
+  </section>
+  <section class="acc open closed" data-key="advanced">
+    <button type="button" class="acc-head" onclick="toggleAcc(this)"><span>05 Pokročilé řízení</span><b>▾</b></button>
+    <div class="acc-body">
+      <div class="grid3 sliders" id="samplingSliders"><div class="field range-field"><label class="range-label"><span>Kroky výpočtu</span><span class="range-value" id="stepsVal">30</span></label><input id="steps" type="range" value="30" min="10" max="50" step="1"><div class="range-scale"><span>rychlejší</span><span>čistší</span></div><div class="range-help">Více kroků = čistší výsledek, ale delší generování.</div></div><div class="field range-field"><label class="range-label"><span>Držení promptu</span><span class="range-value" id="cfgVal">3,5</span></label><input id="cfg" type="range" value="3.5" min="1" max="6" step="0.1"><div class="range-scale"><span>volnější</span><span>přesnější</span></div><div class="range-help">Jak silně se model drží textu.</div></div><div class="field range-field"><label class="range-label"><span>Síla pohybu</span><span class="range-value" id="motionVal">0,75</span></label><input id="motion" type="range" value="0.75" min="0.2" max="1.2" step="0.05"><div class="range-scale"><span>stabilní</span><span>živé</span></div><div class="range-help">Nižší hodnota stabilnější, vyšší víc pohybu.</div></div></div>
+      <div class="enhancer-toggle" id="promptEnhanceBox">
+        <label class="checkline"><input id="promptEnhance" type="checkbox"><span><b>Prompt Enhance (LTX)</b><br><span class="hint">Defaultně vypnuto. U image-to-video může změnit prompt a oslabit držení vstupní fotky.</span></span></label>
+        <div class="enhance-panel">
+          <label class="range-label"><span>Délka vylepšeného promptu</span><span class="range-value" id="enhanceTokensVal">128</span></label>
+          <input id="enhanceTokens" type="range" value="128" min="64" max="512" step="16">
+          <div class="range-scale"><span>kratší</span><span>delší / víc fantazie</span></div>
+          <div class="enhance-note">Platí jen při zapnutém Prompt Enhance. Doporučené: 128.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="acc open closed" data-key="send">
+    <button type="button" class="acc-head" onclick="toggleAcc(this)"><span>06 Odeslání</span><b>▾</b></button>
+    <div class="acc-body"><div class="worker-download-card"><div><b>🖧 ComfyUI na síti</b><div class="small">Render jde přímo do ComfyUI, bez workeru a bez FTP. Adresa se nastavuje v config.json.</div></div><div class="w-actions"><a class="btn blue" href="{{COMFY_URL}}" target="_blank" rel="noopener">Otevřít ComfyUI</a></div></div><div class="field"><label>Cíl renderu</label><div class="worker-picker" id="workerPicker"><button type="button" class="worker-btn w-active" data-wid="any" onclick="pickWorker('any')" id="wbtn-any"><span class="wdot w-offline" id="wdot-any"></span><span><div class="wlabel">🖧 ComfyUI</div><div class="wcard-info" id="winfo-any">zjišťuji stav…</div></span></button></div></div></div>
+  </section>
+</div>
+<div class="actions"><button class="btn primary" type="submit">GENEROVAT VIDEO</button><button class="btn ghost" type="button" onclick="resetForm()">Reset</button><button class="btn ghost" type="button" onclick="freshSeed()">Nový seed</button></div>
+<div class="bar"><span id="bar"></span></div><p class="small">🇨🇿 prompt se přeloží na pozadí do angličtiny. 🇺🇸 odešle prompt bez překladu.</p>
+</form>
+</div></section>
+<section class="panel"><div class="panel-head"><h2 id="detailTitle">Detail jobu</h2><div style="flex:1"></div><button class="btn blue hidden" id="downloadBtn">Stáhnout</button><button class="btn ghost hidden" id="rerunSameBtn">Zopakovat</button><button class="btn ghost hidden" id="rerunNewBtn">Nový seed</button><button class="btn red hidden" id="cancelBtn">Zrušit</button><button class="btn red hidden" id="deleteBtn">Smazat</button></div><div class="panel-body" id="detail"><div class="detail-empty">Vyber job vlevo nebo vytvoř nový.</div></div></section>
+</div>
+</main>
+</div>
+</div>
+<script>
+const APP_VERSION='{{APP_VERSION}}';
+const COMFY_URL='{{COMFY_URL}}';
+const PIN_REQUIRED={{PIN_REQUIRED}};
+</script>
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+fastapi>=0.110
+uvicorn>=0.27
+python-multipart>=0.0.9
+requests>=2.31
+websocket-client>=1.7
+# Aby Python veril systemovemu uloziste certifikatu (firemni interni CA):
+truststore>=0.9
