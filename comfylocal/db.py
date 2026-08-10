@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS comfy_jobs (
     current_node        TEXT,
     error               TEXT,
     project_id          INTEGER,
+    user_id             INTEGER,
+    user_name           TEXT,
     cancel_requested    INTEGER NOT NULL DEFAULT 0,
     created_at          TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
@@ -90,8 +92,25 @@ def connect() -> sqlite3.Connection:
         return _CONN
 
 
+def _migrate_job_owner() -> None:
+    """Doplní sloupce vlastníka do databáze vytvořené starší verzí.
+
+    Joby z doby před účty zůstanou bez vlastníka (NULL) — ty vidí každý, aby se
+    po updatu nikomu neztratila rozjetá fronta.
+    """
+    with _LOCK:
+        conn = connect()
+        have = {r["name"] for r in conn.execute("PRAGMA table_info(comfy_jobs)").fetchall()}
+        if "user_id" not in have:
+            conn.execute("ALTER TABLE comfy_jobs ADD COLUMN user_id INTEGER")
+        if "user_name" not in have:
+            conn.execute("ALTER TABLE comfy_jobs ADD COLUMN user_name TEXT")
+        conn.commit()
+
+
 def init() -> None:
     connect()
+    _migrate_job_owner()
     with _LOCK:
         conn = connect()
         rows = conn.execute(
@@ -160,16 +179,18 @@ def job_row_to_public(row: Any) -> Dict[str, Any]:
 
 def create_job(prompt: str, negative_prompt: str, preset: str, input_image: str,
                input_original_name: str = "", settings: Optional[dict] = None,
-               project_id: Optional[int] = None) -> int:
+               project_id: Optional[int] = None, user_id: Optional[int] = None,
+               user_name: str = "") -> int:
     ts = now_sql()
     with _LOCK:
         conn = connect()
         cur = conn.execute(
             "INSERT INTO comfy_jobs (prompt, negative_prompt, preset, input_image, input_original_name,"
-            " settings_json, project_id, status, progress, created_at, updated_at)"
-            " VALUES (?,?,?,?,?,?,?,'pending',0,?,?)",
+            " settings_json, project_id, user_id, user_name, status, progress, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,'pending',0,?,?)",
             (prompt, negative_prompt, preset, input_image, input_original_name,
-             json.dumps(settings or {}, ensure_ascii=False), project_id, ts, ts),
+             json.dumps(settings or {}, ensure_ascii=False), project_id,
+             int(user_id) if user_id else None, str(user_name or "") or None, ts, ts),
         )
         conn.commit()
         return int(cur.lastrowid)
@@ -209,6 +230,72 @@ def list_jobs(status: str = "", limit: int = 200) -> List[Dict[str, Any]]:
     with _LOCK:
         rows = connect().execute(sql, params).fetchall()
     return [job_row_to_public(r) for r in rows]
+
+
+# Co z cizího jobu smí uživatel vidět: že někdo renderuje, kdo to je a kde je
+# ve frontě. Prompt, obrázky, nastavení ani chyby se do odpovědi nedostanou.
+_FOREIGN_VISIBLE = ("id", "status", "progress", "created_at", "started_at",
+                    "finished_at", "user_name", "queue_position")
+
+
+def redact_foreign_job(job: Dict[str, Any]) -> Dict[str, Any]:
+    out = {k: job.get(k) for k in _FOREIGN_VISIBLE if k in job}
+    out["foreign"] = True
+    out["prompt"] = ""
+    out["preset"] = ""
+    out["input_url"] = None
+    out["input2_url"] = None
+    out["output_url"] = None
+    out["settings"] = {}
+    out["output_files_list"] = []
+    out["error"] = None
+    return out
+
+
+def annotate_queue_positions(jobs: List[Dict[str, Any]]) -> None:
+    """Doplní jobům ve frontě pořadí (1 = renderuje se / jde na řadu jako první)."""
+    waiting = sorted((j for j in jobs if str(j.get("status")) in ACTIVE_STATUSES),
+                     key=lambda j: int(j.get("id") or 0))
+    for pos, job in enumerate(waiting, start=1):
+        job["queue_position"] = pos
+
+
+def list_jobs_for_user(user_id: Optional[int], is_admin: bool, status: str = "",
+                       limit: int = 200) -> List[Dict[str, Any]]:
+    """Vlastní joby celé, cizí jen anonymizované (aby byla vidět fronta).
+
+    Admin a režim bez účtů (user_id=None) vidí všechno — jinak by správce nemohl
+    frontu spravovat a jednouživatelský provoz by přišel o detail jobu.
+    """
+    jobs = list_jobs(status, limit)
+    annotate_queue_positions(jobs)
+    if is_admin or user_id is None:
+        return jobs
+    out: List[Dict[str, Any]] = []
+    for job in jobs:
+        owner = job.get("user_id")
+        if owner is None or int(owner) == int(user_id):
+            out.append(job)
+        else:
+            out.append(redact_foreign_job(job))
+    return out
+
+
+def jobs_ahead_of_user(user_id: Optional[int]) -> int:
+    """Kolik cizích jobů čeká/renderuje před prvním jobem daného uživatele."""
+    with _LOCK:
+        conn = connect()
+        placeholders = ",".join("?" for _ in ACTIVE_STATUSES)
+        mine = conn.execute(
+            f"SELECT MIN(id) FROM comfy_jobs WHERE status IN ({placeholders}) AND user_id=?",
+            (*ACTIVE_STATUSES, int(user_id) if user_id else -1)).fetchone()
+        first_mine = mine[0] if mine else None
+        if first_mine is None:
+            return 0
+        ahead = conn.execute(
+            f"SELECT COUNT(*) FROM comfy_jobs WHERE status IN ({placeholders}) AND id < ?",
+            (*ACTIVE_STATUSES, int(first_mine))).fetchone()
+    return int(ahead[0] if ahead else 0)
 
 
 def queue_counts() -> Dict[str, int]:
@@ -331,10 +418,15 @@ def delete_job(job_id: int) -> List[str]:
     return deleted
 
 
-def clear_finished() -> Tuple[int, List[str]]:
+def clear_finished(user_id: Optional[int] = None) -> Tuple[int, List[str]]:
+    """user_id=None uklidí vše (admin / režim bez účtů), jinak jen vlastní joby."""
+    sql = "SELECT id FROM comfy_jobs WHERE status IN ('done','error','cancelled')"
+    params: Tuple = ()
+    if user_id is not None:
+        sql += " AND user_id=?"
+        params = (int(user_id),)
     with _LOCK:
-        rows = connect().execute(
-            "SELECT id FROM comfy_jobs WHERE status IN ('done','error','cancelled')").fetchall()
+        rows = connect().execute(sql, params).fetchall()
     deleted_files: List[str] = []
     for r in rows:
         deleted_files.extend(delete_job(int(r["id"])))

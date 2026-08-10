@@ -682,6 +682,26 @@ function renderStatsData(d){
   }
   html+=wh||'<span class="chip bad">worker offline</span>';
   $('stats').innerHTML=html;
+  renderStatsPeek(d);
+}
+
+// Zavřená záložka musí sama napovědět to podstatné: stav ComfyUI a frontu.
+function renderStatsPeek(d){
+  const peek=$('statsPeek');if(!peek)return;
+  const q=d.queue_counts||{};
+  let comfy=null;
+  for(const x of Object.values(d.workers||{})){
+    const c=x.comfy||{};
+    if(c.online)comfy='ok';
+    else if(c.online===false&&comfy===null)comfy='bad';
+  }
+  const bits=[comfy==='ok'?'<span class="chip ok">ComfyUI <b>ready</b></span>'
+    :comfy==='bad'?'<span class="chip bad">ComfyUI <b>offline</b></span>'
+    :'<span class="chip">ComfyUI <b>--</b></span>',
+    `<span class="chip warn">${ui('Fronta','Queue')} <b>${q.active_total||0}</b></span>`];
+  if(typeof d.jobs_ahead==='number'&&d.jobs_ahead>0)
+    bits.push(`<span class="chip info">${ui('před tebou','ahead of you')} <b>${d.jobs_ahead}</b></span>`);
+  peek.innerHTML=bits.join('');
 }
 
 // restartSelectedWorker/startSelectedComfy z původního webu tady nejsou:
@@ -781,6 +801,8 @@ function hidePinGate(){const gate=$('pinGate'),wrap=$('appWrap');if(gate)gate.st
   form.addEventListener('submit',async e=>{
     e.preventDefault();
     const err=$('pinError');const fd=new FormData();fd.append('pin',$('pinInput').value||'');
+    // Při zapnutých účtech server chce i jméno — bez tohohle se přihlásit nedá.
+    const u=$('userInput');if(u)fd.append('username',u.value||'');
     const d=await api('login','POST',fd);
     if(d&&d.success){if(err)err.style.display='none';hidePinGate();location.reload();return}
     if(err){err.textContent=(d&&d.error)||'PIN nesedí.';err.style.display=''}

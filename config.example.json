@@ -10,6 +10,10 @@
   "port": 8770,
   "open_browser": true,
   "access_pin": "",
+  "bootstrap_admin": {
+    "username": "Wolf",
+    "password": ""
+  },
   "default_workflow": "ltx23_i2v_template.json",
   "flf2v_workflow": "ltx23_flf2v_template.json",
   "ltx_lora_override": "",

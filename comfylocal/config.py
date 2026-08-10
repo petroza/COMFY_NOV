@@ -47,6 +47,11 @@ DEFAULTS: Dict[str, Any] = {
     # jménem a heslem (Admin → Uživatelé) a PIN se přeskočí.
     "access_pin": "",
 
+    # První správcovský účet. Vyplň jméno a heslo, spusť appku — účet se založí
+    # a heslo se odsud hned smaže (v databázi zůstane jen PBKDF2 hash).
+    # Heslo sem piš jen v config.json, který je v .gitignore — nikdy ne do kódu.
+    "bootstrap_admin": {"username": "", "password": ""},
+
     # Spuštění ComfyUI z UI (tlačítko „Spustit ComfyUI"). Příkaz se pouští
     # na tomhle PC ve složce comfy_dir. Prázdné = tlačítko jen napoví.
     "comfy_start_cmd": "",

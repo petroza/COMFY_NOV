@@ -74,8 +74,24 @@ button{user-select:none}
 .hamb{display:none}
 .top-left{display:flex;align-items:center;gap:12px;flex:1 1 100%;order:1;min-width:0}
 .top-title{font-family:var(--display);font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;font-size:13px}
-.top-status{display:flex;align-items:center;gap:10px;flex-wrap:nowrap;flex:1 1 100%;order:2;min-width:0}
-.top-actions{display:flex;align-items:center;gap:10px;justify-content:flex-start;flex:1 1 100%;order:3;margin-left:0}
+.top-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
+.top-actions{display:flex;align-items:center;gap:10px;justify-content:flex-start;flex:1 1 100%;order:2;margin-left:0}
+
+/* Statistiky jsou druhá řádka a ve výchozím stavu zavřené — do jedné řádky
+   se s tlačítky nevejdou a chipy se navzájem odřezávaly. */
+.top-info{order:3;flex:1 1 100%;min-width:0}
+.top-info-head{display:flex;align-items:center;gap:10px;cursor:pointer;list-style:none;
+  padding:6px 10px;border:1px solid var(--bd);border-radius:10px;font-size:12px;color:var(--fg-2);
+  background:rgba(255,255,255,.02)}
+.top-info-head::-webkit-details-marker{display:none}
+.top-info-head:hover{border-color:var(--bd-2);color:var(--fg)}
+.top-info-label{font-family:var(--display);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap}
+.top-info-peek{display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;opacity:.9}
+.top-info-caret{transition:transform .15s ease;flex:0 0 auto}
+.top-info[open] .top-info-caret{transform:rotate(180deg)}
+.top-info[open] .top-info-head{margin-bottom:10px}
+.top-info[open] .top-info-peek{display:none}
 .stats{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .stats .chip{display:inline-flex}
 .worker-top{white-space:nowrap}
@@ -429,7 +445,7 @@ body.app-cs #appLangCsBtn,body.app-en #appLangEnBtn{display:none!important}
   .hamb{display:inline-flex}
   .mobile-mask{position:fixed;inset:0;background:rgba(5,5,16,.6);backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:.2s;z-index:25}
   .mobile-mask.open{opacity:1;pointer-events:auto}
-  .top{padding:10px 12px;flex-wrap:wrap}.top-status{flex-basis:100%;min-width:0;order:2;flex-wrap:wrap}.top-actions{order:3;margin-left:0;flex-wrap:wrap;gap:6px}
+  .top{padding:10px 12px;flex-wrap:wrap}.top-status{min-width:0;flex-wrap:wrap}.top-actions{order:2;margin-left:0;flex-wrap:wrap;gap:6px}
   .content{padding:16px;gap:16px}.grid2,.grid3,.grid4,.setup-grid{grid-template-columns:1fr}.image-grid.two{grid-template-columns:1fr}
   .preview,.preview.with-ratio-frame .preview-stage{height:260px}.kv,.detail-grid{grid-template-columns:1fr}
 }
@@ -439,8 +455,8 @@ body.app-cs #appLangCsBtn,body.app-en #appLangEnBtn{display:none!important}
 .acc[data-key="motion"] select,.acc[data-key="motion"] input{height:44px;min-height:44px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:1180px){.acc[data-key="motion"] .grid3.tight{grid-template-columns:1fr}}
 
-/* Horní lišta: stat chipy drží v jedné řádce */
-.stats{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;max-width:100%;-webkit-overflow-scrolling:touch;padding-bottom:4px;scrollbar-width:thin;scrollbar-color:var(--bd-2) transparent}
+/* Horní lišta: chipy se ve druhé řádce zabalí, nescrollují */
+.stats{flex-wrap:wrap;max-width:100%}
 .stats::-webkit-scrollbar{height:6px}
 .stats::-webkit-scrollbar-track{background:transparent}
 .stats::-webkit-scrollbar-thumb{background:var(--bd-2);border-radius:3px}
@@ -454,12 +470,12 @@ body.app-cs #appLangCsBtn,body.app-en #appLangEnBtn{display:none!important}
    POLISH PASS — jen vizuál (žádná změna ID, HTML ani JS)
    ============================================================ */
 
-/* --- Horní lišta: jedna čistá řádka, akce vpravo --- */
+/* --- Horní lišta: název + akce v první řádce, statistiky ve druhé --- */
 @media(min-width:1100px){
-  .top{flex-wrap:nowrap;gap:16px;padding:14px 26px}
+  .top{flex-wrap:wrap;gap:12px 16px;padding:14px 26px}
   .top-left{flex:0 0 auto;order:1;flex-basis:auto}
-  .top-status{flex:1 1 auto;order:2;flex-basis:auto;justify-content:flex-start}
-  .top-actions{flex:0 0 auto;order:3;flex-basis:auto;margin-left:auto;justify-content:flex-end;gap:8px}
+  .top-actions{flex:1 1 auto;order:2;flex-basis:auto;margin-left:auto;justify-content:flex-end;gap:8px}
+  .top-info{order:3;flex:1 1 100%}
 }
 .top-title{font-size:12.5px;letter-spacing:.14em;color:#cdc9f2}
 .top-left::before{content:"";width:9px;height:9px;border-radius:99px;background:var(--grad);
@@ -545,11 +561,9 @@ body.light .status.error{color:#be123c;border-color:rgba(225,29,72,.32);backgrou
 body.light .job-num,body.light .acc-head b{color:#4f46e5}
 body.light .range-help,body.light .enhance-note{color:#6b6990}
 
-/* --- Stat chipy: čisté ukončení místo ostrého odříznutí --- */
+/* --- Stat chipy: ve druhé řádce se vejdou celé, jen se zabalí --- */
 .top-status{position:relative}
-.stats{mask-image:linear-gradient(to right,#000 0,#000 calc(100% - 18px),transparent 100%);
-  -webkit-mask-image:linear-gradient(to right,#000 0,#000 calc(100% - 18px),transparent 100%)}
-.stats .chip{max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stats .chip{max-width:none;white-space:nowrap}
 
 /* --- Slidery: zarovnané hodnoty a jednotný vzhled tahadla --- */
 .range-label{min-height:56px;justify-content:space-between;gap:10px}
@@ -589,33 +603,27 @@ body.light input[type=range]::-webkit-slider-runnable-track{background:linear-gr
    ============================================================ */
 .top{
   display:grid!important;
-  grid-template-areas:"left status actions";
-  grid-template-columns:auto minmax(0,1fr) auto;
+  grid-template-areas:"left actions" "info info";
+  grid-template-columns:auto minmax(0,1fr);
   align-items:center;
-  gap:0 18px;
+  gap:10px 18px;
   flex-wrap:nowrap!important;
   padding:12px 22px!important;
   min-height:64px;
-  overflow:hidden;
+  overflow:visible;
 }
 .top-left{grid-area:left;flex:0 0 auto!important;order:0!important;min-width:0}
-.top-status{grid-area:status;flex:1 1 auto!important;order:0!important;min-width:0;flex-wrap:nowrap!important;overflow:hidden}
 .top-actions{grid-area:actions;flex:0 0 auto!important;order:0!important;margin-left:0!important;
-  justify-content:flex-end;flex-wrap:nowrap!important;min-width:0;gap:8px!important}
-
-/* obě přetékající skupiny se posouvají vodorovně místo zalomení */
-.top-status,.top-actions{
-  overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch;
-  mask-image:linear-gradient(to right,transparent 0,#000 14px,#000 calc(100% - 22px),transparent 100%);
-  -webkit-mask-image:linear-gradient(to right,transparent 0,#000 14px,#000 calc(100% - 22px),transparent 100%);
-  padding:2px 2px 2px 0
-}
-.top-status{mask-image:linear-gradient(to right,#000 0,#000 calc(100% - 22px),transparent 100%);
-  -webkit-mask-image:linear-gradient(to right,#000 0,#000 calc(100% - 22px),transparent 100%)}
-.top-status::-webkit-scrollbar,.top-actions::-webkit-scrollbar{height:0;display:none}
+  justify-content:flex-end;flex-wrap:wrap!important;min-width:0;gap:8px!important}
+.top-info{grid-area:info;min-width:0}
+/* admin.html/setup.html nemají <details class="top-info"> — jejich .top-status
+   je přímé dítě .top, takže potřebuje vlastní grid-area, ať se nepřekrývá. */
+.top>.top-status{grid-area:info;flex-wrap:wrap!important;justify-content:flex-start}
+/* Ve druhé řádce je místa dost, takže se chipy smí zabalit a být vidět celé. */
+.top-status{flex:0 1 auto!important;order:0!important;min-width:0;flex-wrap:wrap!important;overflow:visible}
 .top-actions>*,.top-actions .btn,.top-actions form{flex:0 0 auto!important}
-.stats{overflow:visible;mask-image:none;-webkit-mask-image:none;padding-bottom:0;flex-wrap:nowrap}
-.stats .chip,#userChip{max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stats{overflow:visible;mask-image:none;-webkit-mask-image:none;padding-bottom:0;flex-wrap:wrap}
+.stats .chip,#userChip{max-width:none;white-space:nowrap;overflow:visible;text-overflow:clip}
 
 /* ≤1200 px: název aplikace ustoupí, zůstane stavová tečka + hamburger */
 @media(max-width:1200px){
@@ -627,7 +635,7 @@ body.light input[type=range]::-webkit-slider-runnable-track{background:linear-gr
 /* ≤820 px: dvě pevné řádky — nikdy se nic nepřehází */
 @media(max-width:820px){
   .top{
-    grid-template-areas:"left actions" "status status";
+    grid-template-areas:"left actions" "info info";
     grid-template-columns:auto minmax(0,1fr);
     row-gap:10px;padding:10px 12px!important;min-height:0
   }
@@ -638,11 +646,11 @@ body.light input[type=range]::-webkit-slider-runnable-track{background:linear-gr
 .top-status .stats{flex:0 1 auto;min-width:0}
 @media(min-width:901px){.top .hamb{display:none!important}}
 
-/* Bez přechodů do ztracena — čisté hrany, chipy se krátí elipsou */
+/* Čisté hrany bez přechodů do ztracena; chipy se ve druhé řádce zabalí celé. */
 .top-status,.top-actions{mask-image:none!important;-webkit-mask-image:none!important}
-.stats{mask-image:none!important;-webkit-mask-image:none!important;overflow:hidden}
-.top-status{overflow:hidden}
-.stats .chip,#userChip{flex:0 1 auto;min-width:64px;max-width:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stats{mask-image:none!important;-webkit-mask-image:none!important;overflow:visible}
+.top-status{overflow:visible}
+.stats .chip,#userChip{flex:0 0 auto;min-width:0;max-width:none;overflow:visible;text-overflow:clip;white-space:nowrap}
 .stats .chip{display:inline-block!important;line-height:1.5}
 
 /* --- Horní lišta: systémový, hranatý styl --- */
@@ -718,3 +726,36 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
   background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
 .login-box .logo::before{content:"";display:block;width:74px;height:74px;margin:0 auto 14px;
   background:url("logo-icon.png") center/contain no-repeat;filter:drop-shadow(0 8px 22px rgba(99,102,241,.45))}
+
+/* ============================================================
+   Admin: formulář účtu a tabulky
+   Původně to bylo v .grid4, kde dlouhý popisek u hesla přetékal
+   do dalšího pole a texty se navzájem překrývaly.
+   ============================================================ */
+.user-form{display:flex;flex-direction:column;gap:14px;margin-top:4px}
+.user-form-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1.4fr) minmax(0,.8fr) minmax(0,.8fr);
+  gap:14px;align-items:end}
+.user-form-row>.field{min-width:0;margin-bottom:0;display:flex;flex-direction:column;gap:7px}
+.user-form-row>.field>label{min-height:0;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--fg-2);white-space:nowrap}
+.user-form-row>.field>input,.user-form-row>.field>select{margin-top:0;height:44px;min-height:44px;width:100%}
+.user-form-hint{margin:0;color:var(--fg-2);line-height:1.5}
+.user-form-actions{justify-content:flex-start;gap:10px;flex-wrap:wrap;align-items:center}
+@media(max-width:900px){.user-form-row{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){.user-form-row{grid-template-columns:1fr}}
+
+.users-list{margin-top:18px;overflow-x:auto}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;font-family:var(--display);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--fg-2);font-weight:600;padding:0 12px 8px;border-bottom:1px solid var(--bd);white-space:nowrap}
+.tbl td{padding:11px 12px;border-bottom:1px solid var(--bd);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:0}
+.tbl td .btn{padding:6px 11px;min-height:32px;font-size:12px}
+.tbl .row-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:nowrap}
+.icon-btn{padding:0!important;width:32px;height:32px;min-height:32px;min-width:32px;
+  display:inline-flex!important;align-items:center;justify-content:center;font-size:14px;line-height:1}
+.tbl .tag{display:inline-flex;align-items:center;padding:3px 9px;border-radius:99px;font-size:11px;
+  letter-spacing:.04em;border:1px solid var(--bd-2)}
+.tbl .tag.admin{color:#c7d2fe;border-color:rgba(129,140,248,.55);background:rgba(129,140,248,.12)}
+.tbl .tag.off{color:#fca5a5;border-color:rgba(248,113,113,.45);background:rgba(248,113,113,.1)}
+.tbl .tag.on{color:#86efac;border-color:rgba(74,222,128,.4);background:rgba(74,222,128,.1)}

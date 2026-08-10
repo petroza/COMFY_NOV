@@ -299,6 +299,9 @@ async def on_startup() -> None:
     setup_tls()
     db.init()
     users_mod.ensure_schema()
+    created = users_mod.bootstrap_from_config()
+    if created:
+        log.info("Účet správce %r vytvořen z bootstrap_admin; heslo z config.json vymazáno.", created)
     projects_mod.sync_projects()
     start_runner()
     log.info("ComfyLocal %s běží — ComfyUI: %s (API %s)",

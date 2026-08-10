@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-<div class="app">
+<div class="app" style="grid-template-columns:1fr">
 <main class="main">
   <div class="top">
     <div class="top-left"><div class="top-title">ADMIN · ÚČTY A OVLÁDÁNÍ</div></div>
@@ -26,26 +26,30 @@
       <div class="panel-body">
         <p class="small">Dokud tu není žádný aktivní účet, appka jede v původním režimu (volný přístup, případně PIN
           z config.json). Jakmile vznikne první účet, přihlašuje se jménem a heslem.</p>
-        <form id="userForm" class="grid4" style="align-items:end">
+        <form id="userForm" class="user-form">
           <input type="hidden" id="userId" value="">
-          <div class="field"><label>Jméno</label><input id="uName" type="text" autocomplete="off" required></div>
-          <div class="field"><label>Heslo <span class="small">(při úpravě prázdné = nemění se)</span></label><input id="uPass" type="password" autocomplete="new-password"></div>
-          <div class="field"><label>Role</label><select id="uRole"><option value="user">user</option><option value="admin">admin</option></select></div>
-          <div class="field"><label>Stav</label><select id="uActive"><option value="1">aktivní</option><option value="0">vypnutý</option></select></div>
-          <div class="actions" style="grid-column:1/-1">
+          <div class="user-form-row">
+            <div class="field"><label for="uName">Jméno</label><input id="uName" type="text" autocomplete="off" required></div>
+            <div class="field"><label for="uPass">Heslo</label><input id="uPass" type="password" autocomplete="new-password"></div>
+            <div class="field"><label for="uRole">Role</label><select id="uRole"><option value="user">user</option><option value="admin">admin</option></select></div>
+            <div class="field"><label for="uActive">Stav</label><select id="uActive"><option value="1">aktivní</option><option value="0">vypnutý</option></select></div>
+          </div>
+          <p class="small user-form-hint">Heslo přiděluješ uživateli ty. Při úpravě existujícího účtu nechej
+            pole <b>Heslo</b> prázdné, pokud ho měnit nechceš.</p>
+          <div class="actions user-form-actions">
             <button class="btn primary" type="submit">Uložit účet</button>
             <button class="btn ghost" type="button" onclick="resetUserForm()">Nový</button>
             <span class="small" id="userMsg"></span>
           </div>
         </form>
-        <div id="usersList" style="margin-top:16px"></div>
+        <div id="usersList" class="users-list"></div>
       </div>
     </section>
 
     <section class="panel">
       <div class="panel-head"><h2>ComfyUI a render loop</h2></div>
       <div class="panel-body">
-        <div class="status-line" id="controlLine">…</div>
+        <div class="status-line" id="controlLine" style="display:flex;flex-wrap:wrap;gap:10px">…</div>
         <div class="actions">
           <button class="btn blue" type="button" onclick="doStartComfy()">Spustit ComfyUI</button>
           <button class="btn ghost" type="button" onclick="doRestartRunner()">Restartovat render loop</button>
@@ -83,12 +87,14 @@ function renderUsers(list){
   USERS=list||[];
   const box=document.getElementById('usersList');
   if(!USERS.length){box.innerHTML='<div class="small">Žádné účty — appka jede v původním režimu.</div>';return}
-  box.innerHTML='<table class="tbl" style="width:100%;border-collapse:collapse">'+
-    '<tr><th align="left">Jméno</th><th align="left">Role</th><th align="left">Stav</th><th align="left">Poslední přihlášení</th><th></th></tr>'+
-    USERS.map((u,i)=>`<tr><td>${esc(u.username)}</td><td>${esc(u.role)}</td><td>${u.active?'aktivní':'vypnutý'}</td>`+
-      `<td class="small">${esc(u.last_login||'—')}</td>`+
-      `<td align="right"><button class="btn ghost" onclick="editUser(USERS[${i}])">Upravit</button> `+
-      `<button class="btn red" onclick="removeUser(${u.id})">Smazat</button></td></tr>`).join('')+'</table>';
+  box.innerHTML='<table class="tbl">'+
+    '<thead><tr><th>Jméno</th><th>Role</th><th>Stav</th><th></th></tr></thead><tbody>'+
+    USERS.map((u,i)=>`<tr title="Poslední přihlášení: ${esc(u.last_login||'nikdy')}"><td><b>${esc(u.username)}</b></td>`+
+      `<td><span class="tag ${u.role==='admin'?'admin':''}">${esc(u.role)}</span></td>`+
+      `<td><span class="tag ${u.active?'on':'off'}">${u.active?'aktivní':'vypnutý'}</span></td>`+
+      `<td><div class="row-actions">`+
+      `<button class="btn ghost icon-btn" title="Upravit účet" aria-label="Upravit účet" onclick="editUser(USERS[${i}])">✎</button>`+
+      `<button class="btn red icon-btn" title="Smazat účet" aria-label="Smazat účet" onclick="removeUser(${u.id})">✕</button></div></td></tr>`).join('')+'</tbody></table>';
 }
 async function loadUsers(){const d=await api('list_users');
   if(d.success)renderUsers(d.users);else document.getElementById('usersList').innerHTML='<div class="small">'+esc(d.error||'Nelze načíst')+'</div>';}
@@ -120,8 +126,8 @@ async function doStartComfy(){const d=await api('start_comfy','POST',{});alert(d
 async function doRestartRunner(){if(!confirm('Restartovat render loop?'))return;const d=await api('request_worker_restart','POST',{});alert(d.message||d.error||'');loadControl();}
 async function loadProjects(){const d=await api('projects');const box=document.getElementById('projectsList');
   if(!d.success){box.innerHTML='<div class="small">'+esc(d.error||'Nelze načíst')+'</div>';return}
-  box.innerHTML='<table class="tbl" style="width:100%;border-collapse:collapse"><tr><th align="left">Projekt</th><th align="left">Vstup</th><th align="left">Workflow</th></tr>'+
-    (d.projects||[]).map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.input_type)}</td><td class="small">${esc(p.workflow_file||'—')}</td></tr>`).join('')+'</table>';}
+  box.innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Projekt</th><th>Vstup</th><th>Workflow</th></tr></thead><tbody>'+
+    (d.projects||[]).map(p=>`<tr><td><b>${esc(p.name)}</b></td><td>${esc(p.input_type)}</td><td class="small">${esc(p.workflow_file||'—')}</td></tr>`).join('')+'</tbody></table></div>';}
 async function loadMe(){const d=await api('me');if(d.success)document.getElementById('meChip').innerHTML=esc(d.username)+' <b>'+esc(d.role)+'</b>';}
 loadMe();loadUsers();loadControl();loadProjects();
 setInterval(loadControl,15000);

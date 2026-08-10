@@ -165,6 +165,35 @@ def save_user(user_id: Optional[int], username: str, password: str,
     return get_user(new_id) or {}
 
 
+def bootstrap_from_config() -> Optional[str]:
+    """Založí účet z `bootstrap_admin` v config.json a heslo z configu smaže.
+
+    Heslo se tak nikdy nedostane do gitu (config.json je v .gitignore) a nezůstane
+    ležet v souboru ani po prvním startu. Vrátí jméno vytvořeného účtu, nebo None.
+    """
+    from .config import CONFIG
+
+    spec = CONFIG.get("bootstrap_admin")
+    if not isinstance(spec, dict):
+        return None
+    username = str(spec.get("username") or "").strip()
+    password = str(spec.get("password") or "")
+    if not username or not password:
+        return None
+
+    ensure_schema()
+    with _LOCK:
+        row = db.connect().execute("SELECT id FROM comfy_users WHERE username=?", (username,)).fetchone()
+    if row:
+        # Účet už existuje — heslo z configu jen zahodíme, ať tam neleží.
+        CONFIG.update_and_save({"bootstrap_admin": {"username": username, "password": ""}})
+        return None
+
+    save_user(None, username, password, "admin", True)
+    CONFIG.update_and_save({"bootstrap_admin": {"username": username, "password": ""}})
+    return username
+
+
 def delete_user(user_id: int) -> None:
     ensure_schema()
     with _LOCK:

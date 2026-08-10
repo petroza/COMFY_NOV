@@ -234,17 +234,48 @@ def workers_payload() -> Dict[str, Any]:
     }
 
 
-def dashboard_payload(status: str = "", limit: int = 200, detail_id: int = 0) -> Dict[str, Any]:
+def viewer_scope(request: Request) -> Tuple[Optional[int], bool]:
+    """(user_id, is_admin) pro filtrování jobů. user_id=None znamená „vidí vše".
+
+    Bez účtů má přihlášený uživatel id 0 — to je jednouživatelský režim, kde není
+    co skrývat, takže se chová jako None.
+    """
+    user = current_user(request) or {}
+    uid = int(user.get("id") or 0)
+    return (uid or None), bool(user.get("is_admin"))
+
+
+def job_owner(request: Request) -> Tuple[Optional[int], str]:
+    """(user_id, user_name) pro nově zakládaný job."""
+    user = current_user(request) or {}
+    uid = int(user.get("id") or 0)
+    return (uid or None), str(user.get("username") or "")
+
+
+def may_see_job(job: Optional[Dict[str, Any]], user_id: Optional[int], is_admin: bool) -> bool:
+    if not job:
+        return False
+    if is_admin or user_id is None:
+        return True
+    owner = job.get("user_id")
+    return owner is None or int(owner) == int(user_id)
+
+
+def dashboard_payload(status: str = "", limit: int = 200, detail_id: int = 0,
+                      user_id: Optional[int] = None, is_admin: bool = True) -> Dict[str, Any]:
     out: Dict[str, Any] = {
         "success": True,
-        "jobs": db.list_jobs(status, limit),
+        "jobs": db.list_jobs_for_user(user_id, is_admin, status, limit),
         "workers": workers_payload(),
         "queue_counts": db.queue_counts(),
+        "jobs_ahead": db.jobs_ahead_of_user(user_id) if user_id else 0,
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     if detail_id > 0:
         job = db.get_job(detail_id)
-        if job:
+        if job and not may_see_job(job, user_id, is_admin):
+            out["detail_error"] = "Tenhle job patří jinému uživateli."
+        elif job:
             out["detail"] = {"job": job, "events": db.job_events(detail_id)}
         else:
             out["detail_error"] = "Job nenalezen."
@@ -459,8 +490,10 @@ async def h_create_job(request: Request, method: str):
         settings["input_mode"] = settings.get("input_mode") or "1pict"
 
     project_id = resolve_project(_int(form.get("project_id")), settings)
+    owner_id, owner_name = job_owner(request)
     job_id = db.create_job(prompt, negative, preset, rel,
-                           clean_text(getattr(image, "filename", ""), 240), settings, project_id)
+                           clean_text(getattr(image, "filename", ""), 240), settings, project_id,
+                           owner_id, owner_name)
     db.add_event(job_id, "create",
                  "Job vytvořen + prompt přeložen do EN" if settings.get("translated") else "Job vytvořen",
                  {"settings": settings})
@@ -504,7 +537,7 @@ async def h_create_jobs_batch(request: Request, method: str):
             rel = await save_upload(upload, "input")
             project_id = resolve_project(_int(form.get("project_id")), settings)
             job_id = db.create_job(prompt, negative, preset_base, rel, clean_text(name, 240),
-                                   settings, project_id)
+                                   settings, project_id, *job_owner(request))
             db.add_event(job_id, "create",
                          "Job vytvořen v dávce + prompt přeložen do EN" if settings.get("translated")
                          else "Job vytvořen v dávce",
@@ -535,6 +568,8 @@ async def h_rerun_job(request: Request, method: str):
     src = db.get_job(source_id)
     if not src:
         return fail("Zdrojový job nenalezen.", 404)
+    if not may_see_job(src, *viewer_scope(request)):
+        return fail("Zopakovat jde jen vlastní job.", 403)
     src_rel = str(src.get("input_image") or "")
     src_path = CONFIG.base_dir / src_rel if src_rel else None
     if not src_path or not src_path.is_file():
@@ -580,7 +615,7 @@ async def h_rerun_job(request: Request, method: str):
     new_id = db.create_job(prompt, clean_text(src.get("negative_prompt"), 4000),
                            clean_text(src.get("preset"), 80), rel,
                            clean_text(src.get("input_original_name") or src_path.name, 240),
-                           settings, src.get("project_id"))
+                           settings, src.get("project_id"), *job_owner(request))
     db.add_event(new_id, "rerun",
                  f"Job znovu zařazen z jobu #{source_id}" + (" s novým seedem" if new_seed else " se stejným seedem"),
                  {"source_job_id": source_id, "seed": settings["seed"], "new_seed": new_seed})
@@ -600,6 +635,8 @@ async def h_update_pending_image(request: Request, method: str):
     job = db.get_job(job_id)
     if not job:
         return fail("Job nenalezen.", 404)
+    if not may_see_job(job, *viewer_scope(request)):
+        return fail("Měnit jde jen vlastní job.", 403)
     if str(job.get("status")) != "pending":
         return fail("Fotku lze změnit jen u pending jobu.", 409)
     try:
@@ -627,6 +664,8 @@ async def h_update_pending_job(request: Request, method: str):
     job = db.get_job(job_id)
     if not job:
         return fail("Job nenalezen.", 404)
+    if not may_see_job(job, *viewer_scope(request)):
+        return fail("Editovat jde jen vlastní job.", 403)
     if str(job.get("status")) != "pending":
         return fail("Editovat lze jen pending job.", 409)
 
@@ -700,6 +739,10 @@ async def h_job_file(request: Request, method: str):
     job = db.get_job(job_id)
     if not job:
         return fail("Job nenalezen.", 404)
+    uid, adm = viewer_scope(request)
+    if not may_see_job(job, uid, adm):
+        # Bez tohohle by stačilo hádat ID a stáhnout cizí video přímo z URL.
+        return fail("Soubory cizího jobu nejsou dostupné.", 403)
     rel = {
         "input": job.get("input_image"),
         "input2": (job.get("settings") or {}).get("input_image_2"),
@@ -746,13 +789,17 @@ async def h_dashboard(request: Request, method: str):
     status = clean_text(request.query_params.get("status"), 40)
     limit = clamp_int(request.query_params.get("limit"), 1, 500, 200)
     detail_id = _int(request.query_params.get("detail_id"))
-    return JSONResponse(dashboard_payload(status, limit, detail_id))
+    uid, adm = viewer_scope(request)
+    return JSONResponse(dashboard_payload(status, limit, detail_id, uid, adm))
 
 
 async def h_jobs(request: Request, method: str):
     status = clean_text(request.query_params.get("status"), 40)
     limit = clamp_int(request.query_params.get("limit"), 1, 500, 200)
-    return ok({"jobs": db.list_jobs(status, limit), "queue_counts": db.queue_counts()})
+    uid, adm = viewer_scope(request)
+    return ok({"jobs": db.list_jobs_for_user(uid, adm, status, limit),
+               "queue_counts": db.queue_counts(),
+               "jobs_ahead": db.jobs_ahead_of_user(uid) if uid else 0})
 
 
 async def h_job_detail(request: Request, method: str):
@@ -762,6 +809,9 @@ async def h_job_detail(request: Request, method: str):
     job = db.get_job(job_id)
     if not job:
         return fail("Job nenalezen.", 404)
+    uid, adm = viewer_scope(request)
+    if not may_see_job(job, uid, adm):
+        return fail("Tenhle job patří jinému uživateli.", 403)
     return ok({"job": job, "events": db.job_events(job_id)})
 
 
@@ -772,6 +822,9 @@ async def h_cancel_job(request: Request, method: str):
     job_id = _int(body.get("id"))
     if not job_id:
         return fail("ID chybí.")
+    uid, adm = viewer_scope(request)
+    if not may_see_job(db.get_job(job_id), uid, adm):
+        return fail("Zrušit jde jen vlastní job.", 403)
     done, message = db.request_cancel(job_id)
     if not done:
         return fail(message, 409)
@@ -788,6 +841,9 @@ async def h_delete_job(request: Request, method: str):
     job = db.get_job(job_id)
     if not job:
         return fail("Job nenalezen.", 404)
+    uid, adm = viewer_scope(request)
+    if not may_see_job(job, uid, adm):
+        return fail("Smazat jde jen vlastní job.", 403)
     if str(job.get("status")) not in db.FINISHED_STATUSES:
         db.request_cancel(job_id)
     deleted = db.delete_job(job_id)
@@ -797,7 +853,8 @@ async def h_delete_job(request: Request, method: str):
 async def h_clear_finished(request: Request, method: str):
     if method != "POST":
         return fail("Method not allowed", 405)
-    count, files = db.clear_finished()
+    uid, adm = viewer_scope(request)
+    count, files = db.clear_finished(None if adm else uid)
     return ok({"deleted": count, "deleted_files": files, "cleaned_uploads": db.cleanup_uploads()})
 
 
