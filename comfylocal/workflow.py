@@ -84,20 +84,56 @@ def sanitize_workflow(wf: Any, source: str) -> dict:
 def ltx_safe_size(value: Any, default: int = 1280) -> int:
     """Nejbližší rozměr, který LTX 2.3 šablona spočítá bez nesouhlasu tenzorů.
 
-    Podmínka je, že `rozměr // 32` musí vyjít sudé (viz LTX_LATENT_BLOCK).
-    Hodnoty, které ji už splňují — třeba 1280 nebo 720 — se nechají být;
-    rozbité (1080, 1440, cokoliv z automatického formátu podle fotky) se
-    posunou na nejbližší násobek 64.
+    Šablona počítá první průchod v polovičním rozlišení a pak ho zdvojnásobí
+    upscalerem, takže reálný výstup je `2 * ((rozměr / 2) // 32) * 32`.
+    Aby se výstup rovnal zadání, musí být rozměr **násobek 64** — násobek 32
+    nestačí.
+
+    Dřív se kontrolovalo jen `(rozměr // 32) % 2 == 0`, což 720 pustilo dál,
+    ale ComfyUI z něj stejně udělal 704 (720/2 = 360, 360 // 32 = 11 → 352,
+    ×2 = 704). Appka tedy hlásila 720 a doručila 704.
     """
     try:
         size = int(round(float(value)))
     except (TypeError, ValueError):
         size = int(default)
     size = max(256, min(4096, size))
-    if (size // LTX_LATENT_BLOCK) % 2 == 0:
-        return size
-    snapped = int(round(size / (LTX_LATENT_BLOCK * 2))) * (LTX_LATENT_BLOCK * 2)
+    block = LTX_LATENT_BLOCK * 2  # 64 = 32 (latent) × 2 (upscaler mezi průchody)
+    snapped = int(round(size / block)) * block
     return max(256, min(4096, snapped))
+
+
+def ltx_delivered_size(size: Any) -> int:
+    """Kolik pixelů z daného rozměru reálně vyleze ze šablony (pro diagnostiku)."""
+    try:
+        value = int(round(float(size)))
+    except (TypeError, ValueError):
+        return 0
+    return 2 * ((value // 2) // LTX_LATENT_BLOCK) * LTX_LATENT_BLOCK
+
+
+def ltx_geometry_note(width: int, height: int, fps: int, duration: float) -> str:
+    """Předpočítané velikosti tenzorů, aby se chyba z ComfyUI dala rozklíčovat.
+
+    Když render spadne na „size of tensor a (X) must match tensor b (Y)",
+    dá se z tohohle zápisu poznat, jestli jde o geometrii (pak X/Y odpovídají
+    spočítaným číslům) nebo o chybu ComfyUI (pak neodpovídají) — bez toho se
+    to hádá z ničeho.
+
+    Vzorce plynou z LTX 2.3: video latent je [B,128,T,H/32,W/32], první průchod
+    jede v polovičním rozlišení, audio latent má 128 hodnot na jeden krok
+    a 25 kroků na sekundu.
+    """
+    frames = max(1, int(round(float(fps) * float(duration))) + 1)
+    t = (frames - 1) // 8 + 1
+    h_lat = (int(height) // 2) // LTX_LATENT_BLOCK
+    w_lat = (int(width) // 2) // LTX_LATENT_BLOCK
+    tokens = t * h_lat * w_lat
+    audio_latents = int(round(frames * 25 / max(1, int(fps))))
+    video_frames_out = (t - 1) * 8 + 1
+    return (f"{width}×{height} (1. průchod latent {w_lat}×{h_lat}×{t}) · frames={frames} "
+            f"→ video {video_frames_out}, audio {audio_latents} · "
+            f"noise tokens={tokens}, AV pack={128 * (tokens + audio_latents)}")
 
 
 def load_workflow(name: Optional[str] = None) -> dict:
@@ -735,6 +771,8 @@ def build_workflow(job: dict, comfy_image_name: str, comfy_image_name_2: Optiona
     log.info("Job #%s prompt: %s%s", job.get("id"), prompt[:200], " …" if len(prompt) > 200 else "")
     log.info("Job #%s timing: duration=%ss fps=%s frames=%s, negative=%s",
              job.get("id"), duration, fps, frame_count, "custom" if negative else "workflow-default")
+    if not is_photo_edit:
+        log.info("Job #%s LTX geometrie: %s", job.get("id"), ltx_geometry_note(width, height, fps, duration))
 
     values = {
         "positive_prompt": prompt,

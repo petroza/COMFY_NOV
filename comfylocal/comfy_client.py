@@ -9,6 +9,7 @@ from __future__ import annotations
 import fnmatch
 import json
 import logging
+import re
 import socket
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -518,7 +519,32 @@ def extract_history_error(history: dict) -> str:
                 "v ComfyUI: když spadne i tam, chyba není v ComfyLocalu.")
     if "size mismatch" in low or "expected all tensors to be on the same device" in low:
         txt += (" | Zkontroluj, že checkpoint, LoRA a text encoder ve workflow patří k sobě.")
+    txt += ltx_av_noise_hint(txt)
     return txt
+
+
+def ltx_av_noise_hint(message: str) -> str:
+    """Rozpozná známou chybu ComfyUI u LTX 2.3 s audiem.
+
+    Signatura: „size of tensor a (X) must match … tensor b (Y)", kde platí
+    Y = 128 × (X + počet audio latentů). Znamená to, že ComfyUI vyrobil šum
+    jen pro video, ale latent obsahuje i audio — je to chyba ComfyUI
+    (issue #13692 / #13887), ne chyba rozlišení ani šablony. Řeší ji jedině
+    aktualizace ComfyUI na serveru.
+    """
+    m = re.search(r"size of tensor a \((\d+)\).{0,60}?tensor b \((\d+)\)", message, re.IGNORECASE)
+    if not m:
+        return ""
+    a, b = int(m.group(1)), int(m.group(2))
+    if b <= a or b % 128 != 0:
+        return ""
+    audio_latents = b // 128 - a
+    if not 0 < audio_latents <= 10000:
+        return ""
+    return (f" | Tohle je známá chyba ComfyUI, ne chyba rozlišení: šum se vyrobil jen pro video "
+            f"({a} tokenů), ale latent obsahuje i audio ({a} + {audio_latents} audio latentů = "
+            f"{b}). Opraví to aktualizace ComfyUI na serveru (ComfyUI issue #13692 a #13887); "
+            f"v appce to nastavit nejde.")
 
 
 def raise_if_history_failed(history: dict) -> None:
