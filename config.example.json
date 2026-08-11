@@ -10,6 +10,7 @@
   "port": 8770,
   "open_browser": true,
   "access_pin": "",
+  "fair_queue": true,
   "bootstrap_admin": {
     "username": "Wolf",
     "password": ""

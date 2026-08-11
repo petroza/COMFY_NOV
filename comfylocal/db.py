@@ -281,21 +281,59 @@ def list_jobs_for_user(user_id: Optional[int], is_admin: bool, status: str = "",
     return out
 
 
+def average_job_seconds(limit: int = 20) -> Optional[float]:
+    """Průměrná doba posledních úspěšných renderů, nebo None když ještě nejsou.
+
+    Bere se jen `done` — chyby spadnou po pár sekundách a průměr by zkreslily.
+    """
+    with _LOCK:
+        rows = connect().execute(
+            "SELECT duration_seconds FROM comfy_jobs"
+            " WHERE status='done' AND duration_seconds IS NOT NULL AND duration_seconds > 0"
+            " ORDER BY id DESC LIMIT ?", (max(1, int(limit)),)).fetchall()
+    values = [float(r["duration_seconds"]) for r in rows]
+    return sum(values) / len(values) if values else None
+
+
+def queue_eta_seconds(user_id: Optional[int]) -> Optional[float]:
+    """Za jak dlouho přijde na uživatele řada a jeho job bude hotový.
+
+    Odhad = (kolik jobů je před ním + ten jeho) × průměrná doba renderu.
+    Vrací None, když uživatel nic ve frontě nemá nebo když ještě není
+    z čeho průměrovat — vymyšlený odhad je horší než žádný.
+    """
+    if first_waiting_job_id(user_id) is None:
+        return None
+    avg = average_job_seconds()
+    if avg is None:
+        return None
+    return avg * (jobs_ahead_of_user(user_id) + 1)
+
+
+def first_waiting_job_id(user_id: Optional[int]) -> Optional[int]:
+    """ID nejstaršího čekajícího/běžícího jobu uživatele, nebo None."""
+    if not user_id:
+        return None
+    placeholders = ",".join("?" for _ in ACTIVE_STATUSES)
+    with _LOCK:
+        row = connect().execute(
+            f"SELECT MIN(id) FROM comfy_jobs WHERE status IN ({placeholders}) AND user_id=?",
+            (*ACTIVE_STATUSES, int(user_id))).fetchone()
+    value = row[0] if row else None
+    return int(value) if value is not None else None
+
+
 def jobs_ahead_of_user(user_id: Optional[int]) -> int:
     """Kolik cizích jobů čeká/renderuje před prvním jobem daného uživatele."""
+    first_mine = first_waiting_job_id(user_id)
+    if first_mine is None:
+        return 0
+    placeholders = ",".join("?" for _ in ACTIVE_STATUSES)
     with _LOCK:
-        conn = connect()
-        placeholders = ",".join("?" for _ in ACTIVE_STATUSES)
-        mine = conn.execute(
-            f"SELECT MIN(id) FROM comfy_jobs WHERE status IN ({placeholders}) AND user_id=?",
-            (*ACTIVE_STATUSES, int(user_id) if user_id else -1)).fetchone()
-        first_mine = mine[0] if mine else None
-        if first_mine is None:
-            return 0
-        ahead = conn.execute(
+        row = connect().execute(
             f"SELECT COUNT(*) FROM comfy_jobs WHERE status IN ({placeholders}) AND id < ?",
-            (*ACTIVE_STATUSES, int(first_mine))).fetchone()
-    return int(ahead[0] if ahead else 0)
+            (*ACTIVE_STATUSES, first_mine)).fetchone()
+    return int(row[0] if row else 0)
 
 
 def queue_counts() -> Dict[str, int]:
@@ -321,12 +359,46 @@ def queue_counts() -> Dict[str, int]:
     return counts
 
 
+def _pick_pending_row(conn: sqlite3.Connection, fair: bool) -> Any:
+    """Který pending job pustit dál.
+
+    Ve `fair` režimu se uživatelé střídají: vybere se nejstarší job toho, kdo
+    naposledy rendroval nejdřív (nebo ještě vůbec). Bez toho by dávka 40 obrázků
+    od jednoho člověka zablokovala všechny ostatní na desítky minut.
+    Joby bez vlastníka (z doby před účty) se berou jako jedna společná skupina.
+    """
+    if not fair:
+        return conn.execute(
+            "SELECT * FROM comfy_jobs WHERE status='pending' AND cancel_requested=0"
+            " ORDER BY id ASC LIMIT 1"
+        ).fetchone()
+
+    # Poslední dokončený render každého uživatele = jeho místo v kolečku.
+    # COALESCE kvůli tomu, kdo dnes ještě nic nerendroval — ten má přednost.
+    return conn.execute(
+        """
+        WITH waiting AS (
+            SELECT * FROM comfy_jobs WHERE status='pending' AND cancel_requested=0
+        ),
+        last_run AS (
+            SELECT user_id, MAX(COALESCE(finished_at, started_at)) AS last_at
+            FROM comfy_jobs
+            WHERE COALESCE(finished_at, started_at) IS NOT NULL
+            GROUP BY user_id
+        )
+        SELECT w.* FROM waiting w
+        LEFT JOIN last_run r ON (r.user_id IS w.user_id)
+        ORDER BY COALESCE(r.last_at, '') ASC, w.id ASC
+        LIMIT 1
+        """
+    ).fetchone()
+
+
 def claim_next_job() -> Optional[Dict[str, Any]]:
+    fair = bool(CONFIG.get("fair_queue", True))
     with _LOCK:
         conn = connect()
-        row = conn.execute(
-            "SELECT * FROM comfy_jobs WHERE status='pending' AND cancel_requested=0 ORDER BY id ASC LIMIT 1"
-        ).fetchone()
+        row = _pick_pending_row(conn, fair)
         if not row:
             return None
         job = job_row_to_public(row)

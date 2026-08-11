@@ -42,6 +42,11 @@ DEFAULTS: Dict[str, Any] = {
     "port": 8770,
     "open_browser": True,
 
+    # Střídání uživatelů ve frontě. Když je vypnuté, jede se striktně podle
+    # pořadí vytvoření — a dávka 40 obrázků od jednoho člověka pak zablokuje
+    # všechny ostatní, dokud nedoběhne celá.
+    "fair_queue": True,
+
     # Volitelný PIN pro přístup z ostatních strojů v síti. Prázdné = bez přihlášení.
     # Když v databázi existuje aspoň jeden aktivní účet, má přednost přihlášení
     # jménem a heslem (Admin → Uživatelé) a PIN se přeskočí.

@@ -27,7 +27,19 @@ Předchůdce ([COMFY_PC_FTP_WORKER](https://github.com/petroza/COMFY_PC_FTP_WORK
    - spustí appku a otevře prohlížeč na `http://127.0.0.1:8770`.
 4. V UI zkontrolovat, že chip vlevo nahoře hlásí **ComfyUI online**.
 
-Linux / macOS:
+## Rychlý start (Linux)
+
+Na jakékoli distribuci s Python 3.10+:
+
+```bash
+./START_LINUX.sh
+```
+
+Skript dělá totéž co `START_WINDOWS.bat` — najde Python, vytvoří `.venv`,
+doinstaluje závislosti, připraví `config.json` a spustí appku. Závislosti se
+přeinstalují jen když se změnil `requirements.txt`.
+
+Ručně (macOS, nebo když chceš mít kontrolu):
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
@@ -35,6 +47,43 @@ pip install -r requirements.txt
 cp config.example.json config.json
 python -m comfylocal
 ```
+
+## Účty a víc uživatelů
+
+Dokud v databázi není žádný účet, appka jede v původním režimu (volný přístup,
+případně PIN). Jakmile vznikne první účet, přihlašuje se jménem a heslem.
+
+**První správce** se založí přes `bootstrap_admin` v `config.json`:
+
+```json
+"bootstrap_admin": { "username": "Wolf", "password": "sem-heslo" }
+```
+
+Po startu se účet vytvoří a **heslo se z `config.json` hned smaže** (v databázi
+zůstane jen PBKDF2 hash). Heslo proto nikdy nepatří do kódu ani do gitu —
+`config.json` je v `.gitignore`. Další účty se zakládají v **Admin → Uživatelé**.
+
+Když appku používá víc lidí najednou:
+
+- **Vlastní joby vidí každý celé**, cizí jen anonymizovaně — kdo renderuje
+  a kolikátý je ve frontě, ale ne prompt, obrázek ani výsledek.
+- **Fronta se střídá** (`fair_queue`), takže dávka 40 obrázků od jednoho
+  člověka nezablokuje ostatní. Vypnutím se vrátí striktní pořadí podle vzniku.
+- V liště je **odhad času** („hotovo za ~6 min") z průměru posledních
+  dokončených renderů. Dokud není z čeho počítat, nezobrazí se nic.
+- Zvonek v liště zapíná **upozornění (zvuk + systémová notifikace)**, až render
+  dojde — u několikaminutových renderů se u toho nedá sedět.
+
+## Testy
+
+```bash
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/python -m pytest
+```
+
+Testy pokrývají hlavně **izolaci jobů mezi uživateli** (v UI se nepozná, ale
+rozbité by lidem ukázalo cizí prompty) a **logiku fronty** (střídání uživatelů,
+pozice, odhad času). Každý test si dělá vlastní prázdnou databázi.
 
 ## Konfigurace (`config.json`)
 
@@ -47,7 +96,9 @@ python -m comfylocal
 | `comfy_verify_tls` | `false` ověřování vypne. Poslední možnost — appka to napíše do logu a varování urllib3 utiší. |
 | `comfy_headers` | Volitelné hlavičky pro proxy (např. Basic auth). |
 | `host` / `port` | Kde poslouchá UI. `0.0.0.0` = dostupné i pro kolegy v síti. |
-| `access_pin` | Když je vyplněný, UI i API chtějí PIN. Prázdné = bez přihlašování (jen pro důvěryhodnou síť). |
+| `access_pin` | Když je vyplněný, UI i API chtějí PIN. Prázdné = bez přihlašování (jen pro důvěryhodnou síť). Účty mají přednost — jakmile existuje aspoň jeden, PIN se přeskočí. |
+| `bootstrap_admin` | `{"username": "...", "password": "..."}` — při startu se z toho založí první správcovský účet a heslo se odsud smaže. |
+| `fair_queue` | `true` = uživatelé se ve frontě střídají, takže jedna velká dávka neblokuje ostatní. `false` = striktně podle pořadí vzniku. |
 | `default_workflow` / `flf2v_workflow` | Které JSONy ze `workflows/` se použijí jako výchozí. |
 | `ltx_retry_native_resolution` | Výchozí `true`. Když render spadne na nesouhlasu tenzorů (šablona nesnese zvolené rozlišení), zkusí se ještě jednou v rozlišení, se kterým je šablona vyexportovaná. Do událostí jobu se zapíše, proč je výstup menší. |
 | `ltx_lora_override` | Vymění LoRA ve video šablonách bez editace JSONu (např. `"ltx-2.3-22b-distilled-1.1.safetensors"`), `"off"` ji vypne. Hodí se, když je LoRA ze šablony na serveru poškozená nebo chybí. |

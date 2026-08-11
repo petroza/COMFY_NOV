@@ -536,7 +536,65 @@ function selectAllJobs(){jobs.forEach(j=>selectedJobs.add(+j.id));updateSelectio
 function selectFinishedJobs(){jobs.forEach(j=>{if(j.status==='done')selectedJobs.add(+j.id)});updateSelectionInfo();renderJobs()}
 function downloadFinishedJobs(){selectFinishedJobs();downloadSelectedJobs()}
 function newJobForm(){selectedId=null;detailCache=null;$('detailTitle').textContent=ui('Detail jobu','Job detail');$('detail').innerHTML='<div class="detail-empty">'+ui('Vyplň formulář a odešli video job.','Fill the form and submit a video job.')+'</div>';hideActionButtons();document.querySelector('#formPanel').scrollIntoView({behavior:'smooth'});renderJobs()}
+/* ── Upozornění na dokončený render ───────────────────────
+   Render trvá minuty, takže se u toho nedá sedět. Když job dojde,
+   cinkne to a vyskočí systémová notifikace (pokud ji uživatel povolil). */
+const NOTIFY_KEY='pzcomfy_notify';
+function notifyEnabled(){return localStorage.getItem(NOTIFY_KEY)!=='0'}
+function setNotifyEnabled(on){
+  localStorage.setItem(NOTIFY_KEY,on?'1':'0');
+  if(on&&'Notification'in window&&Notification.permission==='default')Notification.requestPermission();
+  updateNotifyButton();
+}
+function toggleNotify(){setNotifyEnabled(!notifyEnabled())}
+function updateNotifyButton(){
+  const b=$('notifyToggle');if(!b)return;
+  const on=notifyEnabled();
+  b.textContent=on?'🔔':'🔕';
+  b.title=on?ui('Upozornění na hotový render: zapnuto','Finished-render alerts: on')
+            :ui('Upozornění na hotový render: vypnuto','Finished-render alerts: off');
+  b.setAttribute('aria-pressed',on?'true':'false');
+}
+function playDing(){
+  try{
+    const Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)return;
+    const ctx=new Ctx();const now=ctx.currentTime;
+    // Dvoutónové cinknutí — krátké, ať to v open officu nikoho neirituje.
+    [[880,0],[1320,.12]].forEach(([f,t])=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.type='sine';o.frequency.value=f;
+      g.gain.setValueAtTime(0,now+t);
+      g.gain.linearRampToValueAtTime(.18,now+t+.02);
+      g.gain.exponentialRampToValueAtTime(.0001,now+t+.32);
+      o.connect(g);g.connect(ctx.destination);o.start(now+t);o.stop(now+t+.34);
+    });
+    setTimeout(()=>{try{ctx.close()}catch(e){}},900);
+  }catch(e){}
+}
+function notifyFinishedJobs(oldJobs,newJobs){
+  if(!notifyEnabled()||!Array.isArray(oldJobs)||!oldJobs.length)return;
+  const was=new Map(oldJobs.map(j=>[+j.id,String(j.status||'')]));
+  const done=[],failed=[];
+  for(const j of newJobs){
+    if(j.foreign)continue;                       // cizí joby uživatele nezajímají
+    const before=was.get(+j.id);
+    if(before===undefined||!LIVE_STATUSES.includes(before))continue;
+    if(j.status==='done')done.push(j);
+    else if(j.status==='error')failed.push(j);
+  }
+  if(!done.length&&!failed.length)return;
+  playDing();
+  if(!('Notification'in window)||Notification.permission!=='granted')return;
+  const body=j=>((j.settings||{}).original_prompt||j.prompt||'').trim().slice(0,90);
+  try{
+    if(done.length===1)new Notification(ui('Video je hotové','Video is ready')+' · #'+done[0].id,{body:body(done[0]),tag:'pz'+done[0].id});
+    else if(done.length>1)new Notification(ui('Hotovo videí: ','Videos ready: ')+done.length,{tag:'pzmulti'});
+    for(const j of failed)new Notification(ui('Render spadl','Render failed')+' · #'+j.id,{body:String(j.error||'').slice(0,120),tag:'pzerr'+j.id});
+  }catch(e){}
+}
+
 function applyJobsData(d){
+  notifyFinishedJobs(jobs, d.jobs||[]);
   jobs=d.jobs||[];
   const valid=new Set(jobs.map(j=>+j.id));
   selectedJobs=new Set([...selectedJobs].filter(id=>valid.has(id)));
@@ -701,7 +759,20 @@ function renderStatsPeek(d){
     `<span class="chip warn">${ui('Fronta','Queue')} <b>${q.active_total||0}</b></span>`];
   if(typeof d.jobs_ahead==='number'&&d.jobs_ahead>0)
     bits.push(`<span class="chip info">${ui('před tebou','ahead of you')} <b>${d.jobs_ahead}</b></span>`);
+  if(d.eta_seconds)
+    bits.push(`<span class="chip info" title="${ui('Odhad z průměru posledních renderů','Estimated from recent render times')}">`+
+      `${ui('hotovo za','ready in')} <b>~${fmtEta(d.eta_seconds)}</b></span>`);
   peek.innerHTML=bits.join('');
+}
+
+// „hotovo za ~12 min" je čitelnější než 743 sekund.
+function fmtEta(sec){
+  const s=Math.max(0,Math.round(Number(sec)||0));
+  if(s<90)return s+' s';
+  const m=Math.round(s/60);
+  if(m<60)return m+' min';
+  const h=Math.floor(m/60);
+  return h+' h '+(m%60)+' min';
 }
 
 // restartSelectedWorker/startSelectedComfy z původního webu tady nejsou:
@@ -736,6 +807,7 @@ async function tick(){await refreshDashboard();schedulePoll();}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){clearTimeout(pollTimer);tick();}});
 function bootFastRefresh(){const box=$('jobs');if(box&&!jobs.length)box.innerHTML='<div class="small" style="padding:12px">'+ui('Načítám frontu…','Loading queue…')+'</div>';refreshDashboard(true);const bursts=JUST_LOGGED_IN?[180,650,1400,2800,5200]:[350,1200];bursts.forEach(ms=>setTimeout(()=>refreshDashboard(true),ms));schedulePoll(JUST_LOGGED_IN?6000:8000)}
 setAppLang(getInitialAppLang());
+updateNotifyButton();
 bindPromptClearButton();
 // PZ FIX: výchozí jazyk PROMPTU je vlaječka CZ, ne jazyk celé aplikace.
 // To znamená: uživatel píše česky a před odesláním se prompt překládá CZ → EN.

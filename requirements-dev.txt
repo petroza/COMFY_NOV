@@ -1,0 +1,4 @@
+# Jen pro vývoj a testy, do běhu aplikace to potřeba není.
+# Spuštění testů:  .venv/bin/python -m pytest -q
+-r requirements.txt
+pytest>=8.0

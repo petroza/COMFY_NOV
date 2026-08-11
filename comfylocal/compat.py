@@ -269,6 +269,8 @@ def dashboard_payload(status: str = "", limit: int = 200, detail_id: int = 0,
         "workers": workers_payload(),
         "queue_counts": db.queue_counts(),
         "jobs_ahead": db.jobs_ahead_of_user(user_id) if user_id else 0,
+        "avg_job_seconds": db.average_job_seconds(),
+        "eta_seconds": db.queue_eta_seconds(user_id) if user_id else None,
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     if detail_id > 0:
@@ -799,7 +801,9 @@ async def h_jobs(request: Request, method: str):
     uid, adm = viewer_scope(request)
     return ok({"jobs": db.list_jobs_for_user(uid, adm, status, limit),
                "queue_counts": db.queue_counts(),
-               "jobs_ahead": db.jobs_ahead_of_user(uid) if uid else 0})
+               "jobs_ahead": db.jobs_ahead_of_user(uid) if uid else 0,
+               "avg_job_seconds": db.average_job_seconds(),
+               "eta_seconds": db.queue_eta_seconds(uid) if uid else None})
 
 
 async def h_job_detail(request: Request, method: str):
@@ -863,7 +867,11 @@ async def h_cleanup_uploads(request: Request, method: str):
 
 
 async def h_stats(request: Request, method: str):
-    return ok({"data": None, "workers": workers_payload(), "queue_counts": db.queue_counts()})
+    uid, _ = viewer_scope(request)
+    return ok({"data": None, "workers": workers_payload(), "queue_counts": db.queue_counts(),
+               "jobs_ahead": db.jobs_ahead_of_user(uid) if uid else 0,
+               "avg_job_seconds": db.average_job_seconds(),
+               "eta_seconds": db.queue_eta_seconds(uid) if uid else None})
 
 
 async def h_diagnostics(request: Request, method: str):
