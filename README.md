@@ -101,6 +101,7 @@ pozice, odhad času). Každý test si dělá vlastní prázdnou databázi.
 | `fair_queue` | `true` = uživatelé se ve frontě střídají, takže jedna velká dávka neblokuje ostatní. `false` = striktně podle pořadí vzniku. |
 | `default_workflow` / `flf2v_workflow` | Které JSONy ze `workflows/` se použijí jako výchozí. |
 | `ltx_retry_native_resolution` | Výchozí `true`. Když render spadne na nesouhlasu tenzorů (šablona nesnese zvolené rozlišení), zkusí se ještě jednou v rozlišení, se kterým je šablona vyexportovaná. Do událostí jobu se zapíše, proč je výstup menší. |
+| `ltx_align_av_length` | Výchozí `true`. Srovná délku tak, aby audio nebylo delší než obraz (šablona počítá `fps×duration+1`, ale video se dekóduje na nejbližší `8k+1`). Srovnává se dolů, takže velikost video latentu zůstává stejná a obraz vyjde identicky jako předtím — mění se jen délka audia. |
 | `ltx_lora_override` | Vymění LoRA ve video šablonách bez editace JSONu (např. `"ltx-2.3-22b-distilled-1.1.safetensors"`), `"off"` ji vypne. Hodí se, když je LoRA ze šablony na serveru poškozená nebo chybí. |
 | `defaults` | Předvyplnění formuláře (fps, délka, rozlišení, Prompt Enhance…). |
 | `purge_finished_after_hours` | Automatický úklid hotových jobů. `0` = nikdy. |
@@ -172,13 +173,32 @@ na `strength` vodicích obrázků nesahá, aby render dopadl stejně jako v Comf
 ### Rozlišení u LTX
 
 LTX 2.3 komprimuje obraz 32×, a i2v šablona navíc počítá první průchod v polovičním rozlišení
-a pak ho zvedá 2× spatial upscalerem. Aby to vyšlo, musí být `rozměr // 32` sudé číslo —
-jinak druhý průchod dostane latent a vodicí obrázek v jiné velikosti a render spadne na
-`The size of tensor a (…) must match the size of tensor b (…)`.
+a pak ho zvedá 2× spatial upscalerem. Výsledek je tedy `2 × ((rozměr / 2) // 32) × 32` — aby se
+rovnal zadání, musí být rozměr **násobek 64**. Násobek 32 nestačí: 720 projde (720 // 32 = 22, sudé),
+ale ComfyUI z něj stejně udělá 704 (720/2 = 360, 360 // 32 = 11 → 352, ×2 = 704).
 
-Appka proto u video režimů rozměry srovná na tuhle mřížku (`ltx_safe_size`) — v UI i na backendu.
-Hodnoty, které podmínku už splňují (1280, 720, 1920, 1024), zůstanou beze změny; 1080 se posune
-na 1088 a 1440 na 1408. Photo edit tuhle větev nemá, takže se mu rozměry nechávají, jak je zadáš.
+Appka proto u video režimů rozměry srovná na násobek 64 (`ltx_safe_size`) — v UI i na backendu —
+takže **to, co je v UI, je i ve výsledném souboru**. Většina presetů je násobek 64 a nemění se
+(1920, 1088, 1472, 1280, 1024, 1984); 1080 se posune na 1088 a HD presety hlásí 1280×704 / 704×1280,
+protože to je to, co LTX doopravdy vyrobí. Photo edit tuhle větev nemá, tam se rozměry nechávají.
+
+### Délka a audio
+
+Šablona počítá délku jako `fps × duration + 1` (u 25 fps a 5 s = 126), jenže video VAE stlačuje
+čas 8× a dekóduje zpátky jen `(T-1)×8+1` frejmů — reálně tedy 121. Audio ale dostávalo 126, takže
+přečnívalo o ~0,2 s. `ltx_align_av_length` proto délku srovná dolů na nejbližší `8k+1` a nastaví ji
+oběma najednou. Video se tím nemění: `T = (frames-1)//8 + 1` vyjde pro 126 i 121 stejně (16).
+
+### Když render spadne na nesouhlasu tenzorů
+
+Hláška `The size of tensor a (X) must match the size of tensor b (Y)` má dvě různé příčiny a appka
+je od sebe odliší. Když platí `Y = 128 × (X + počet audio latentů)`, jde o **známou chybu ComfyUI**
+(issue [#13692](https://github.com/Comfy-Org/ComfyUI/issues/13692) a
+[#13887](https://github.com/Comfy-Org/ComfyUI/issues/13887)): šum se vyrobí jen pro video, ale latent
+obsahuje i audio. To se v appce nastavit nedá — **řeší to aktualizace ComfyUI na serveru**. Appka
+tuhle signaturu sama pozná a napíše to do chyby jobu. Do logu se navíc u každého jobu zapíše
+předpočítaná geometrie (`LTX geometrie: …`), takže se dá ověřit, jestli čísla z chyby odpovídají
+rozlišení, nebo ne.
 
 ## Log
 

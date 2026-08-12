@@ -18,6 +18,7 @@
   "default_workflow": "ltx23_i2v_template.json",
   "flf2v_workflow": "ltx23_flf2v_template.json",
   "ltx_lora_override": "",
+  "ltx_align_av_length": true,
   "ltx_retry_native_resolution": true,
   "defaults": {
     "fps": 25,

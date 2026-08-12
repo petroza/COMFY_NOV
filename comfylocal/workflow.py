@@ -112,7 +112,8 @@ def ltx_delivered_size(size: Any) -> int:
     return 2 * ((value // 2) // LTX_LATENT_BLOCK) * LTX_LATENT_BLOCK
 
 
-def ltx_geometry_note(width: int, height: int, fps: int, duration: float) -> str:
+def ltx_geometry_note(width: int, height: int, fps: int, duration: float,
+                      frames: Optional[int] = None) -> str:
     """Předpočítané velikosti tenzorů, aby se chyba z ComfyUI dala rozklíčovat.
 
     Když render spadne na „size of tensor a (X) must match tensor b (Y)",
@@ -124,7 +125,9 @@ def ltx_geometry_note(width: int, height: int, fps: int, duration: float) -> str
     jede v polovičním rozlišení, audio latent má 128 hodnot na jeden krok
     a 25 kroků na sekundu.
     """
-    frames = max(1, int(round(float(fps) * float(duration))) + 1)
+    if frames is None:
+        frames = max(1, int(round(float(fps) * float(duration))) + 1)
+    frames = max(1, int(frames))
     t = (frames - 1) // 8 + 1
     h_lat = (int(height) // 2) // LTX_LATENT_BLOCK
     w_lat = (int(width) // 2) // LTX_LATENT_BLOCK
@@ -597,6 +600,48 @@ def align_ltx_guide_resize(wf: dict, width: int, height: int) -> List[str]:
     return patched
 
 
+def ltx_safe_frames(fps: Any, duration: Any) -> int:
+    """Počet frejmů, na kterém se video i audio shodnou.
+
+    Šablona počítá délku jako `fps × duration + 1` (node „Math Expression
+    (length)"), jenže video VAE stlačuje čas 8× a dekóduje zpátky jen
+    `(T-1)*8+1` frejmů. Při 25 fps a 5 s vyjde 126, ale video má reálně 121
+    frejmů — audio ale dostane 126, takže je o ~0,2 s delší než obraz.
+
+    Srovnáním **dolů** na nejbližší `8k+1` se to sjednotí. Zásadní je, že
+    `T = (frames-1)//8 + 1` přitom zůstane stejné: pro každé n z intervalu
+    `[8k+1, 8k+8]` vyjde `T = k+1`, a největší `8k+1 <= n` má totéž `k`.
+    Video se tedy počítá úplně stejně jako předtím — mění se jen délka audia.
+    """
+    try:
+        count = int(round(float(fps) * float(duration))) + 1
+    except (TypeError, ValueError):
+        return 121
+    count = max(1, count)
+    return max(0, (count - 1) // 8) * 8 + 1
+
+
+def align_ltx_av_length(wf: dict, fps: Any, duration: Any) -> List[str]:
+    """Nastaví délku tak, aby audio nebylo delší než video.
+
+    Přepíše výraz `a * b + 1` na konkrétní číslo. Node zůstává stejného typu,
+    jen vrací srovnanou hodnotu — a tu pak dostane video latent i audio latent.
+    """
+    patched: List[str] = []
+    frames = ltx_safe_frames(fps, duration)
+    for node_id, node in wf.items():
+        if not isinstance(node, dict) or not isinstance(node.get("inputs"), dict):
+            continue
+        if str(node.get("class_type") or "") != "ComfyMathExpression":
+            continue
+        expression = str(node["inputs"].get("expression") or "").replace(" ", "")
+        if expression != "a*b+1":
+            continue
+        node["inputs"]["expression"] = str(frames)
+        patched.append(f"AV délka {node_id}: fps*duration+1 -> {frames} frejmů")
+    return patched
+
+
 def template_native_resolution(workflow_name: Optional[str]) -> Optional[tuple]:
     """Rozlišení, se kterým je šablona vyexportovaná (nody Width / Height).
 
@@ -771,8 +816,6 @@ def build_workflow(job: dict, comfy_image_name: str, comfy_image_name_2: Optiona
     log.info("Job #%s prompt: %s%s", job.get("id"), prompt[:200], " …" if len(prompt) > 200 else "")
     log.info("Job #%s timing: duration=%ss fps=%s frames=%s, negative=%s",
              job.get("id"), duration, fps, frame_count, "custom" if negative else "workflow-default")
-    if not is_photo_edit:
-        log.info("Job #%s LTX geometrie: %s", job.get("id"), ltx_geometry_note(width, height, fps, duration))
 
     values = {
         "positive_prompt": prompt,
@@ -830,6 +873,9 @@ def build_workflow(job: dict, comfy_image_name: str, comfy_image_name_2: Optiona
     photo_patched = patch_photo_edit(wf, steps)
 
     guide_patched: List[str] = [] if is_photo_edit else align_ltx_guide_resize(wf, width, height)
+    av_patched: List[str] = []
+    if not is_photo_edit and bool(CONFIG.get("ltx_align_av_length", True)):
+        av_patched = align_ltx_av_length(wf, fps, duration)
     lora_patched = apply_lora_override(wf, CONFIG.get("ltx_lora_override"))
 
     if patched:
@@ -840,6 +886,13 @@ def build_workflow(job: dict, comfy_image_name: str, comfy_image_name_2: Optiona
         log.info("PHOTO EDIT patch: %s", "; ".join(photo_patched[:8]))
     if guide_patched:
         log.info("Sladění vodicího obrázku s rozlišením: %s", "; ".join(guide_patched))
+    if av_patched:
+        log.info("Sladění délky videa a audia: %s", "; ".join(av_patched))
+    if not is_photo_edit:
+        # Až po patchích, ať čísla odpovídají tomu, co se opravdu odešle.
+        effective_frames = ltx_safe_frames(fps, duration) if av_patched else None
+        log.info("Job #%s LTX geometrie: %s", job.get("id"),
+                 ltx_geometry_note(width, height, fps, duration, effective_frames))
     if lora_patched:
         log.info("LoRA override z config.json: %s", "; ".join(lora_patched[:6]))
     return wf

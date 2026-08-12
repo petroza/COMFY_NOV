@@ -17,7 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from comfylocal.workflow import ltx_delivered_size, ltx_geometry_note, ltx_safe_size  # noqa: E402
+from comfylocal.workflow import (align_ltx_av_length, ltx_delivered_size,  # noqa: E402
+                                 ltx_geometry_note, ltx_safe_frames, ltx_safe_size)
 from comfylocal.comfy_client import ltx_av_noise_hint  # noqa: E402
 
 
@@ -88,3 +89,65 @@ def test_av_noise_hint_ignores_unrelated_mismatches():
     assert ltx_av_noise_hint("size of tensor a (100) must match the size of tensor b (777)") == ""
     # b < a → nesmysl pro tuhle signaturu
     assert ltx_av_noise_hint("size of tensor a (999) must match the size of tensor b (128)") == ""
+
+
+# ── délka videa vs. audia ───────────────────────────────────
+def latent_t(frames: int) -> int:
+    """Časový rozměr video latentu, jak ho počítá LTX."""
+    return (frames - 1) // 8 + 1
+
+
+@pytest.mark.parametrize("fps,duration", [(25, 5), (25, 3), (24, 5), (30, 5), (25, 10),
+                                          (25, 1), (50, 5), (25, 2.5), (60, 8)])
+def test_frame_snapping_never_changes_the_video(fps, duration):
+    """Nejdůležitější pojistka celé téhle úpravy.
+
+    Srovnání frejmů smí opravit jen délku audia. Kdyby se změnilo `T`, změnil
+    by se i celý video latent — tedy jiný render, jiná cena za GPU čas.
+    """
+    original = int(round(fps * duration)) + 1     # co počítá šablona dnes
+    snapped = ltx_safe_frames(fps, duration)
+    assert snapped <= original, "srovnávat se smí jen dolů, jinak by render byl delší"
+    assert latent_t(snapped) == latent_t(original), "změnil by se video latent — to nesmí nastat"
+
+
+@pytest.mark.parametrize("fps,duration", [(25, 5), (24, 5), (30, 5), (25, 2.5), (60, 8)])
+def test_snapped_frames_decode_to_themselves(fps, duration):
+    """Po srovnání se video dekóduje přesně na tolik frejmů, kolik dostalo audio."""
+    frames = ltx_safe_frames(fps, duration)
+    decoded = (latent_t(frames) - 1) * 8 + 1
+    assert decoded == frames
+
+
+def test_default_5s_at_25fps_matches_reality():
+    """25 fps × 5 s: šablona říká 126, video umí 121 — audio se srovná na 121."""
+    assert ltx_safe_frames(25, 5) == 121
+    assert latent_t(126) == latent_t(121) == 16
+
+
+def test_safe_frames_survives_nonsense():
+    assert ltx_safe_frames(None, None) == 121
+    assert ltx_safe_frames("x", 5) == 121
+    assert ltx_safe_frames(0, 0) >= 1
+
+
+def test_align_av_length_rewrites_only_the_length_node():
+    wf = {
+        "320:323": {"class_type": "ComfyMathExpression",
+                    "inputs": {"expression": "a * b + 1", "values.a": ["320:301", 0]}},
+        "320:292": {"class_type": "ComfyMathExpression", "inputs": {"expression": "a/2"}},
+        "320:283": {"class_type": "SamplerCustomAdvanced", "inputs": {"noise": ["320:276", 0]}},
+    }
+    patched = align_ltx_av_length(wf, 25, 5)
+
+    assert wf["320:323"]["inputs"]["expression"] == "121"
+    assert wf["320:292"]["inputs"]["expression"] == "a/2", "půlení rozlišení se nesmí dotknout"
+    assert wf["320:283"]["inputs"]["noise"] == ["320:276", 0], "sampler zůstává beze změny"
+    assert len(patched) == 1
+
+
+def test_align_av_length_is_safe_on_foreign_workflow():
+    """Šablona bez toho nodu se nesmí rozbít ani nic nenahlásit."""
+    wf = {"1": {"class_type": "KSampler", "inputs": {"seed": 1}}}
+    assert align_ltx_av_length(wf, 25, 5) == []
+    assert wf == {"1": {"class_type": "KSampler", "inputs": {"seed": 1}}}

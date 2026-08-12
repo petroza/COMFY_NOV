@@ -74,6 +74,12 @@ DEFAULTS: Dict[str, Any] = {
     # Prázdné = nechat, co je ve workflow. "off" = LoRA vypnout (strength 0).
     "ltx_lora_override": "",
 
+    # Srovná délku tak, aby audio nebylo delší než obraz. Šablona počítá
+    # fps×duration+1 (u 25 fps a 5 s = 126), ale video se dekóduje jen na 121
+    # frejmů — audio pak přečnívá o ~0,2 s. Srovnává se dolů na násobek 8 plus
+    # jedna, což velikost video latentu nemění, takže obraz vyjde stejně jako dřív.
+    "ltx_align_av_length": True,
+
     # Když render spadne na nesouhlasu tenzorů (šablona nesnese zvolené rozlišení),
     # zkusí se ještě jednou v rozlišení, se kterým je šablona vyexportovaná.
     "ltx_retry_native_resolution": True,
