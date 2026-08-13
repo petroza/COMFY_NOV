@@ -122,6 +122,44 @@ def test_alternative_sink_is_accepted():
     assert wf["3"]["inputs"]["text"] == ["2", 0]
 
 
+# ── CLIPLoader fallback (LTX 2.5 instalace nemá LTXAVTextEncoderLoader) ──
+CLIP_LOADER_INFO = {
+    "CLIPLoader": {"input": {"required": {
+        "clip_name": [["gemma_3_12B_it_fp4_mixed.safetensors", "clip_l.safetensors"]],
+        "type": [["ltxv", "stable_diffusion"]],
+        "device": [["default", "cpu"]]}}},
+    "TextGenerateLTX2Prompt": {"input": {"required": {
+        "sampling_mode": [["on", "off"]]}}},
+    "PreviewAny": {"input": {"required": {}}},
+}
+
+
+def test_falls_back_to_cliploader_when_no_ltxav_loader():
+    """ComfyUI, kde Gemma sedí v obecném CLIPLoaderu (LTX 2.5 styl), ne v
+    LTXAVTextEncoderLoaderu (LTX 2.3 styl) — appka to musí umět použít taky."""
+    client = FakeClient(CLIP_LOADER_INFO)
+    avail = translate_comfy.availability(client)
+    assert avail["ok"] is True
+    assert avail["loader_class"] == "CLIPLoader"
+    assert avail["loader_input"] == "clip_name"
+    assert avail["encoder"] == "gemma_3_12B_it_fp4_mixed.safetensors"
+
+    wf = translate_comfy.build_translate_workflow(client, "kočka sedí na okně", "cs", "en")
+    assert wf["1"]["class_type"] == "CLIPLoader"
+    assert wf["1"]["inputs"]["clip_name"] == "gemma_3_12B_it_fp4_mixed.safetensors"
+    assert wf["1"]["inputs"]["type"] == "ltxv"
+    assert wf["2"]["inputs"]["clip"] == ["1", 0]
+
+
+def test_ltxav_loader_preferred_when_both_available():
+    """Když ComfyUI nabízí oba nody, přednost má specializovaný LTXAV loader."""
+    info = dict(FULL_INFO)
+    info.update(CLIP_LOADER_INFO)
+    client = FakeClient(info)
+    avail = translate_comfy.availability(client)
+    assert avail["loader_class"] == "LTXAVTextEncoderLoader"
+
+
 # ── čištění odpovědi modelu ─────────────────────────────────
 @pytest.mark.parametrize("raw,expected", [
     ("a cat sits on the window", "a cat sits on the window"),

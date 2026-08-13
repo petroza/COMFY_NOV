@@ -8,8 +8,13 @@ a přeložit si prompt vlastními silami, bez jediného paketu mimo lokální s�
 
 Skládá se to ze tří nodů, které šablona používá i pro Prompt Enhance:
 
-    LTXAVTextEncoderLoader  →  TextGenerateLTX2Prompt  →  PreviewAny
-    (načte Gemmu)              (vygeneruje překlad)       (vrátí text)
+    (loader Gemmy)  →  TextGenerateLTX2Prompt  →  PreviewAny
+    (načte Gemmu)       (vygeneruje překlad)       (vrátí text)
+
+Loader Gemmy je buď starší `LTXAVTextEncoderLoader` (LTX 2.3 šablony), nebo
+obyčejný `CLIPLoader` (LTX 2.5 šablony) — `TextGenerateLTX2Prompt` bere na
+vstupu `clip` z obou stejně, takže appka zkusí nejdřív jeden, pak druhý,
+podle toho, co ComfyUI skutečně nabízí.
 
 `PreviewAny` je důležitý: bez něj by text zůstal uvnitř grafu a nedostal se
 do `/history`, odkud si ho appka přečte.
@@ -27,7 +32,13 @@ from .config import CONFIG
 
 log = logging.getLogger("comfylocal.translate.comfy")
 
-TEXT_ENCODER_LOADER = "LTXAVTextEncoderLoader"
+# Pořadí záleží: LTXAVTextEncoderLoader je specializovaný pro LTX AV a zkusí
+# se první, CLIPLoader je obecný node, který LTX 2.5 šablony používají pro
+# načtení stejných Gemma modelů (jiný combo input name: "clip_name").
+TEXT_ENCODER_LOADERS: Tuple[Tuple[str, str], ...] = (
+    ("LTXAVTextEncoderLoader", "text_encoder"),
+    ("CLIPLoader", "clip_name"),
+)
 TEXT_GENERATOR = "TextGenerateLTX2Prompt"
 
 # Nody, které umí dostat hotový string do /history. PreviewAny je v ComfyUI
@@ -73,23 +84,43 @@ def _sink_for(client: ComfyClient) -> Optional[Tuple[str, str]]:
     return None
 
 
+def _find_loader(client: ComfyClient, info: dict) -> Optional[Tuple[str, str, List[str]]]:
+    """První loader node (v pořadí TEXT_ENCODER_LOADERS), který v ComfyUI
+    existuje a nabízí aspoň jednu možnost jazykového modelu."""
+    for class_type, input_name in TEXT_ENCODER_LOADERS:
+        if class_type not in info:
+            continue
+        options = client.combo_options(class_type, input_name)
+        if options:
+            return class_type, input_name, options
+    return None
+
+
 def availability(client: ComfyClient) -> Dict[str, Any]:
     """Co pro překlad ve ComfyUI chybí. Používá to Diagnostika i Setup."""
     info = client.object_info() or {}
     if not info:
         return {"ok": False, "reason": "ComfyUI nevrátil object_info, takže nevím, co umí."}
-    missing: List[str] = [n for n in (TEXT_ENCODER_LOADER, TEXT_GENERATOR) if n not in info]
+    if TEXT_GENERATOR not in info:
+        return {"ok": False, "reason": f"ComfyUI nemá node: {TEXT_GENERATOR}",
+                "missing": [TEXT_GENERATOR]}
+    known_loaders = [c for c, _ in TEXT_ENCODER_LOADERS if c in info]
+    if not known_loaders:
+        return {"ok": False, "reason": "ComfyUI nemá node: " +
+                                       " nebo ".join(c for c, _ in TEXT_ENCODER_LOADERS),
+                "missing": [c for c, _ in TEXT_ENCODER_LOADERS]}
     sink = _sink_for(client)
     if not sink:
-        missing.append(" nebo ".join(s[0] for s in TEXT_SINKS[:2]))
-    if missing:
-        return {"ok": False, "reason": "ComfyUI nemá node: " + ", ".join(missing),
-                "missing": missing}
-    encoders = client.combo_options(TEXT_ENCODER_LOADER, "text_encoder")
-    if not encoders:
-        return {"ok": False, "reason": f"{TEXT_ENCODER_LOADER} nenabízí žádný text encoder — "
-                                       f"chybí model Gemmy."}
-    return {"ok": True, "sink": sink[0], "encoder": _pick_encoder(client, encoders),
+        return {"ok": False, "reason": "ComfyUI nemá node: " +
+                                       " nebo ".join(s[0] for s in TEXT_SINKS[:2]),
+                "missing": [" nebo ".join(s[0] for s in TEXT_SINKS[:2])]}
+    found = _find_loader(client, info)
+    if not found:
+        return {"ok": False, "reason": "Žádný z nodů (" + ", ".join(known_loaders) +
+                                       ") nenabízí žádný jazykový model — chybí model Gemmy."}
+    loader_class, loader_input, encoders = found
+    return {"ok": True, "sink": sink[0], "loader_class": loader_class,
+            "loader_input": loader_input, "encoder": _pick_encoder(client, encoders),
             "encoders": encoders}
 
 
@@ -108,10 +139,10 @@ def _pick_encoder(client: ComfyClient, encoders: List[str]) -> str:
     return encoders[0]
 
 
-def _pick_checkpoint(client: ComfyClient) -> Optional[str]:
+def _pick_checkpoint(client: ComfyClient, loader_class: str) -> Optional[str]:
     """Checkpoint, který loader potřebuje ke konfiguraci text encoderu."""
     wanted = str(CONFIG.get("translate_comfy_checkpoint") or "").strip()
-    options = client.combo_options(TEXT_ENCODER_LOADER, "ckpt_name")
+    options = client.combo_options(loader_class, "ckpt_name")
     if not options:
         return wanted or None
     if wanted:
@@ -136,12 +167,18 @@ def build_translate_workflow(client: ComfyClient, text: str, source: str, target
     instruction = template.format(text=text, source=source, target=target,
                                   source_name=lang_name(source), target_name=lang_name(target))
 
-    loader_inputs: Dict[str, Any] = {"text_encoder": avail["encoder"]}
-    checkpoint = _pick_checkpoint(client)
+    loader_class = avail["loader_class"]
+    loader_input = avail["loader_input"]
+    loader_inputs: Dict[str, Any] = {loader_input: avail["encoder"]}
+    checkpoint = _pick_checkpoint(client, loader_class)
     if checkpoint:
         loader_inputs["ckpt_name"] = checkpoint
-    if client.combo_options(TEXT_ENCODER_LOADER, "device"):
+    if client.combo_options(loader_class, "device"):
         loader_inputs["device"] = "default"
+    if loader_class == "CLIPLoader":
+        types = client.combo_options(loader_class, "type")
+        if any(str(t).lower() == "ltxv" for t in types):
+            loader_inputs["type"] = "ltxv"
 
     gen_inputs: Dict[str, Any] = {
         "prompt": instruction,
@@ -161,7 +198,7 @@ def build_translate_workflow(client: ComfyClient, text: str, source: str, target
             gen_inputs["sampling_mode.top_p"] = 0.9
             gen_inputs["sampling_mode.seed"] = 1
     return {
-        "1": {"class_type": TEXT_ENCODER_LOADER, "inputs": loader_inputs,
+        "1": {"class_type": loader_class, "inputs": loader_inputs,
               "_meta": {"title": "Jazykový model"}},
         "2": {"class_type": TEXT_GENERATOR, "inputs": gen_inputs,
               "_meta": {"title": "Překlad"}},
@@ -274,8 +311,10 @@ def translate_via_comfy(text: str, source: str = "cs", target: str = "en",
             best = cleaned
     if not best:
         raise ComfyError("Model vrátil jen původní text — překlad se nepovedl.")
+    # loader_inputs má encoder vždy jako první klíč (viz build_translate_workflow).
+    encoder_key = next(iter(workflow["1"]["inputs"]))
     return {"success": True, "translated": best, "provider": "comfy",
-            "model": workflow["1"]["inputs"]["text_encoder"]}
+            "model": workflow["1"]["inputs"][encoder_key]}
 
 
 __all__ = ["translate_via_comfy", "availability", "build_translate_workflow",
