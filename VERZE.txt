@@ -2,5 +2,5 @@ ComfyNOVA instalační balíček
 Datum sestavení: 2026-08-13
 Zdrojová větev: agent/minimax-h3-workflow
 
-Ověřeno: první správce a přihlášení, odstranění bootstrap hesla, automatické testy,
-LTX 2.3, LTX 2.5, MiniMax H3 I2V, Flux.2 a lokální překlad přes ComfyUI/Gemma.
+Ověřeno: první správce a přihlášení, odstranění bootstrap hesla, 120 testů,
+LTX 2.3, LTX 2.5, MiniMax H3 I2V i Ref2V, Flux.2 a lokální překlad přes ComfyUI/Gemma.

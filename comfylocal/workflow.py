@@ -280,8 +280,9 @@ def auto_patch_workflow_nodes(wf: dict, values: Dict[str, Any],
     text_candidates: List[tuple] = []
     positive_patched = False
     negative_patched = False
+    minimax_h3_classes = ("minimaxh3imagetovideo", "minimaxh3referencetovideo")
     is_minimax_h3 = any(
-        isinstance(n, dict) and str(n.get("class_type") or "").lower() == "minimaxh3imagetovideo"
+        isinstance(n, dict) and str(n.get("class_type") or "").lower() in minimax_h3_classes
         for n in wf.values()
     )
 
@@ -300,7 +301,7 @@ def auto_patch_workflow_nodes(wf: dict, values: Dict[str, Any],
         # bývají rozměry připojené z ResolutionSelectoru; obecný linked patch by
         # tam omylem přepsal hodnotu `megapixels`. Přímé INT hodnoty ComfyUI
         # přijímá a přesně odpovídají rozměrům z formuláře.
-        if cls == "minimaxh3imagetovideo":
+        if cls in minimax_h3_classes:
             if prompt and isinstance(inputs.get("prompt"), str):
                 old = str(inputs["prompt"])
                 inputs["prompt"] = prompt
@@ -348,7 +349,7 @@ def auto_patch_workflow_nodes(wf: dict, values: Dict[str, Any],
         # MiniMax má pouze jeden pozitivní `prompt`; nemá samostatný negative
         # input. Ten jsme zpracovali výše a nesmí se znovu heuristicky označit
         # za negativní podle slov obsažených v původní filmové ukázce.
-        text_keys = [] if cls == "minimaxh3imagetovideo" else [
+        text_keys = [] if cls in minimax_h3_classes else [
             k for k in ("text", "prompt", "caption", "positive", "negative")
             if k in inputs and isinstance(inputs.get(k), str)
         ]
