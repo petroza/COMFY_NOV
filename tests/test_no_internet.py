@@ -21,15 +21,41 @@ if str(ROOT) not in sys.path:
 LOCAL_HINTS = ("127.0.0.1", "localhost", "::1", "0.0.0.0")
 
 
+def _allowed_hosts() -> set:
+    """Hosty, se kterými appka mluvit smí: localhost a vlastní ComfyUI.
+
+    ComfyUI běží na firemní síti, takže jeho jméno nemusí být localhost —
+    `viz-proxy-dev.nova.group` je pořád lokální síť, ne internet. Bez tohohle
+    by test hlásil chybu jen kvůli tomu, na jakou adresu je appka nastavená.
+
+    Adresa se čte ze všech modulů, které mají vlastní odkaz na CONFIG: jiné
+    testy si `comfylocal.config` reloadují, takže každý modul může držet jinou
+    instanci a záleželo by na pořadí testů.
+    """
+    import comfylocal.comfy_client as comfy_client_module
+    import comfylocal.config as config_module
+    import comfylocal.translate as translate_module
+
+    hosts = set()
+    for module in (translate_module, comfy_client_module, config_module):
+        host = str(getattr(getattr(module, "CONFIG", None), "comfy_host", "") or "")
+        if host:
+            hosts.add(host)
+            hosts.add(host.split(":")[0])
+    return hosts
+
+
 @pytest.fixture()
 def net_watch(monkeypatch):
     """Zablokuje síť a zapíše, na jaké cizí hosty se appka pokusila jít."""
     attempts: list = []
+    allowed = _allowed_hosts()
 
     def guard(url, *a, **kw):
         text = str(url)
         host = text.split("/")[2] if "://" in text else text
-        if not any(h in host for h in LOCAL_HINTS):
+        bare = host.split(":")[0]
+        if not any(h in host for h in LOCAL_HINTS) and host not in allowed and bare not in allowed:
             attempts.append(host)
         raise requests.exceptions.ConnectionError("síť je v testu zakázaná")
 
