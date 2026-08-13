@@ -1,0 +1,6 @@
+ComfyNOVA instalační balíček
+Datum sestavení: 2026-08-13
+Zdrojový commit: 18f1b74
+
+Ověřeno: první správce a přihlášení, odstranění bootstrap hesla, 119 testů,
+LTX 2.3, LTX 2.5, MiniMax H3, Flux.2 a lokální překlad přes ComfyUI/Gemma.
