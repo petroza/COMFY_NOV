@@ -188,6 +188,40 @@ Ve `workflows/` jsou tyhle šablony:
 | `flux2_edit_template.json` | photo edit — fotka dovnitř, fotka ven | Flux.2 |
 | `firered_edit_template.json` | photo edit — fotka dovnitř, fotka ven | FireRed / Qwen |
 
+Appka zná i tyhle novější modely. Šablony k nim v repu **nejsou** — je potřeba je jednou
+naimportovat (viz níž), protože z ComfyUI přišly jako UI export, ne jako API:
+
+| Soubor | Režim | Model |
+|---|---|---|
+| `ltx25_i2v_template.json` | 1 PICT — video z jedné fotky | LTX 2.5 distilled + Gemma 4 12B |
+| `ltx25_flf2v_template.json` | 2 PICT — první + poslední frejm | LTX 2.5 distilled |
+| `minimax_h3_i2v_template.json` | 1 PICT — video z jedné fotky | MiniMax H3 `fl2va` + Qwen3-VL 32B |
+| `minimax_h3_ref2v_template.json` | 2 PICT — obě fotky jako **reference** | MiniMax H3 `ref2va` |
+
+U MiniMax H3 „podle referencí" nejde o první a poslední frejm: obě fotky jsou reference a
+v promptu se na ně odkazuje jako `<Picture 1>` a `<Picture 2>`.
+
+### Import workflow z ComfyUI
+
+ComfyUI umí workflow uložit dvěma způsoby a **appka umí jen ten druhý**:
+
+* *Workflow → Export* — podklad pro editor (`nodes`, `links`, `definitions.subgraphs`).
+* *Workflow → Export (API)* — plochý `{id: {class_type, inputs}}`, tohle se posílá na `/prompt`.
+
+Nejspolehlivější je proto v ComfyUI dát **Export (API)** a soubor jen zkopírovat do `workflows/`.
+
+Když máš jen obyčejný export (třeba ty v `docs/comfyui_projects/`), převede ho tenhle příkaz:
+
+```bash
+python -m comfylocal import-workflow docs/comfyui_projects/video_ltx2_5_i2v.json
+```
+
+Import si vyžádá seznam nodů ze **živého ComfyUI** (`object_info`), protože v UI exportu jsou
+hodnoty parametrů uložené jako pole **bez jmen** — a ta se nesmí hádat, špatně přiřazený parametr
+znamená spadlý nebo tiše špatný render. Zvládne i rozbalení subgrafů (u LTX 2.5 je v subgrafu celý
+pipeline). Když si jménem nějakého parametru není jistý, **nic nezapíše** a napíše, co mu chybí.
+Na konci vypíše modely, které workflow potřebuje, a označí ty, které na ComfyUI nejsou.
+
 Obě LTX šablony jsou export ve formátu **API** (*Workflow → Export (API)*) z projektů, které leží
 v `docs/comfyui_projects/`. Když se projekt v ComfyUI změní, stačí ho znovu vyexportovat do API
 a přepsat příslušný soubor ve `workflows/`. Režim si appka pozná sama: `SaveImage` bez video nodů

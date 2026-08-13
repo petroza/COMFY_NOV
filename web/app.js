@@ -61,7 +61,25 @@ async function loadProjects(){
   }catch(e){}
 }
 function projectIcon(t,p=null){return isTwoPictProject(p)?'🎞️':(t==='text'?'📝':t==='none'?'⚡':'🖼');}
-function projectDisplayName(p){const name=String(p&&p.name||'');if(name.includes('nový model i2v'))return ui('LTX 2.3 nový model i2v / 1 PICT','LTX 2.3 new i2v model / 1 PICT');if(name.includes('první + poslední'))return ui('LTX 2.3 první + poslední frejm / 2 PICT','LTX 2.3 first + last frame / 2 PICT');return name||ui('Projekt ','Project ')+(p&&p.id?p.id:'');}
+// Do EN se překládají jen popisné části názvu; značka modelu (LTX 2.5, MiniMax H3…)
+// zůstane, jak je. Dřív se tu název celý přepisoval podle toho, co v něm bylo za
+// slovo, takže každý projekt s „první + poslední" se ukázal jako LTX 2.3 — nový
+// projekt tím zmizel z nabídky pod cizím jménem.
+const PROJECT_NAME_EN=[
+  ['první + poslední frejm','first + last frame'],
+  ['podle referencí','from references'],
+  ['z jedné fotky','from one image'],
+  ['nový model i2v','new i2v model'],
+  ['úprava fotky','photo edit'],
+];
+function projectDisplayName(p){
+  const name=String(p&&p.name||'');
+  if(!name)return ui('Projekt ','Project ')+(p&&p.id?p.id:'');
+  if(appLang!=='en')return name;
+  let out=name;
+  for(const [cs,en] of PROJECT_NAME_EN)out=out.split(cs).join(en);
+  return out;
+}
 function renderProjectCards(){
   const sel=document.getElementById('project');
   if(!sel)return;

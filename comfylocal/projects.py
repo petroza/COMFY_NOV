@@ -39,6 +39,31 @@ KNOWN: Dict[str, Dict[str, object]] = {
         "description": "FireRed/Qwen edit workflow — na vstupu fotka, na výstupu upravená fotka.",
         "sort_order": 40,
     },
+    # Novější modely. Šablony se do workflows/ dostanou importem z UI exportu
+    # (`python -m comfylocal import-workflow …`) nebo přímo přes „Export (API)"
+    # v ComfyUI. Dokud soubor ve workflows/ není, projekt se v UI nenabídne.
+    "ltx25_i2v_template.json": {
+        "name": "LTX 2.5 z jedné fotky / 1 PICT",
+        "description": "LTX 2.5 image-to-video — jedna vstupní fotka, synchronní zvuk.",
+        "sort_order": 5,
+    },
+    "ltx25_flf2v_template.json": {
+        "name": "LTX 2.5 první + poslední frejm / 2 PICT",
+        "description": "LTX 2.5 FLF2V — přechod mezi první a poslední fotkou.",
+        "sort_order": 15,
+    },
+    "minimax_h3_i2v_template.json": {
+        "name": "MiniMax H3 z jedné fotky / 1 PICT",
+        "description": "MiniMax H3 image-to-video — nativní stereo zvuk, až ~15 s.",
+        "sort_order": 25,
+    },
+    "minimax_h3_ref2v_template.json": {
+        "name": "MiniMax H3 podle referencí / 2 PICT",
+        "description": "MiniMax H3 reference-to-video — obě fotky jsou reference "
+                       "(v promptu se na ně odkazuje jako <Picture 1> a <Picture 2>), "
+                       "ne první a poslední frejm.",
+        "sort_order": 35,
+    },
 }
 
 
