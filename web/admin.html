@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Admin — PZ COMFY VIDEO REMOTE</title>
 <link rel="icon" href="/favicon.ico" type="image/svg+xml">
-<link rel="stylesheet" href="/static/app.css?v=20260813-admin-gap">
+<link rel="stylesheet" href="/static/app.css?v=20260813-admin-picker">
 </head>
 <body>
 <div class="app" style="grid-template-columns:1fr">
@@ -65,11 +65,16 @@
         <p class="small">Tady přidáš nebo odebereš API workflow. Velké modely <code>.safetensors</code>
           zůstávají v ComfyUI; kontrola níže ukáže, které soubory konkrétní workflow potřebuje a co chybí.</p>
         <form id="workflowUploadForm" class="user-form" enctype="multipart/form-data">
-          <div class="user-form-row">
-            <div class="field"><label for="workflowFile">Workflow JSON (Export API)</label>
-              <input id="workflowFile" type="file" accept=".json,application/json" required></div>
-            <div class="field"><label class="checkline" style="margin-top:24px">
-              <input id="workflowReplace" type="checkbox"><span>Přepsat existující</span></label></div>
+          <div class="workflow-upload-row">
+            <div class="field workflow-file-field"><label for="workflowFile">Workflow JSON (Export API)</label>
+              <div class="workflow-file-picker">
+                <input id="workflowFile" class="workflow-file-input" type="file" accept=".json,application/json" required>
+                <label class="workflow-file-button" for="workflowFile"><span aria-hidden="true">＋</span> Vybrat JSON</label>
+                <span id="workflowFileName" class="workflow-file-name">Žádný soubor nevybrán</span>
+              </div>
+            </div>
+            <label class="checkline workflow-replace">
+              <input id="workflowReplace" type="checkbox"><span>Přepsat existující workflow</span></label>
           </div>
           <div class="actions user-form-actions">
             <button class="btn primary" type="submit">Nahrát workflow</button>
@@ -167,7 +172,10 @@ async function deleteWorkflow(index){const name=(WORKFLOWS[index]||{}).canonical
 document.getElementById('workflowUploadForm').addEventListener('submit',async e=>{e.preventDefault();const f=document.getElementById('workflowFile').files[0];if(!f)return;
   const fd=new FormData();fd.append('workflow',f);if(document.getElementById('workflowReplace').checked)fd.append('replace','1');
   const msg=document.getElementById('workflowMsg');msg.textContent='Nahrávám a kontroluji…';
-  try{const r=await fetch(`${API}?action=upload_workflow`,{method:'POST',body:fd,credentials:'same-origin'});const d=await r.json();msg.textContent=d.message||d.error||'';if(d.success){e.target.reset();renderWorkflowFiles(d)}}catch(err){msg.textContent='Nahrání selhalo: '+err.message}});
+  try{const r=await fetch(`${API}?action=upload_workflow`,{method:'POST',body:fd,credentials:'same-origin'});const d=await r.json();msg.textContent=d.message||d.error||'';if(d.success){e.target.reset();updateWorkflowFileName();renderWorkflowFiles(d)}}catch(err){msg.textContent='Nahrání selhalo: '+err.message}});
+function updateWorkflowFileName(){const input=document.getElementById('workflowFile');const name=document.getElementById('workflowFileName');
+  const file=input.files&&input.files[0];name.textContent=file?file.name:'Žádný soubor nevybrán';name.classList.toggle('selected',!!file);}
+document.getElementById('workflowFile').addEventListener('change',updateWorkflowFileName);
 async function loadMe(){const d=await api('me');if(d.success)document.getElementById('meChip').innerHTML=esc(d.username)+' <b>'+esc(d.role)+'</b>';}
 loadMe();loadUsers();loadControl();loadProjects();
 setInterval(loadControl,15000);
