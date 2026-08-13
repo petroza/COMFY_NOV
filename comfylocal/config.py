@@ -107,6 +107,24 @@ DEFAULTS: Dict[str, Any] = {
     "translate_target_lang": "en",
     "translate_timeout": 12,
 
+    # Čím se překládá:
+    #   "comfy"  — jazykovým modelem, který už běží ve ComfyUI (Gemma z LTX
+    #              šablony). Appka pak nepotřebuje výstup do internetu vůbec.
+    #   "online" — původní Google / MyMemory (vyžaduje internet).
+    #   "off"    — nepřekládat.
+    "translate_backend": "comfy",
+    # Když překlad přes ComfyUI nevyjde, smí appka zkusit internet? Výchozí ne,
+    # aby „nesahá na internet" platilo doopravdy.
+    "translate_allow_internet_fallback": False,
+    # Model pro překlad. Prázdné = appka si vybere sama (dá přednost Gemmě).
+    "translate_comfy_encoder": "",
+    "translate_comfy_checkpoint": "",
+    "translate_comfy_max_length": 512,
+    # Načtení modelu do paměti může trvat, proto je limit vyšší než u Googlu.
+    "translate_comfy_timeout": 180,
+    # Instrukce pro model. Prázdné = výchozí šablona pro Gemma 3.
+    "translate_comfy_template": "",
+
     # Hotové joby starší než X hodin se automaticky uklidí (0 = nikdy).
     "purge_finished_after_hours": 0,
     "poll_interval": 2.0,

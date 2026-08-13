@@ -37,13 +37,46 @@ def _clean_lang(code: str, fallback: str) -> str:
     return code or fallback
 
 
-def translate_text_online(text: str, source: str = "cs", target: str = "en") -> Dict[str, object]:
+def translate_text(text: str, source: str = "cs", target: str = "en") -> Dict[str, object]:
+    """Přeloží text podle `translate_backend` z config.json.
+
+    - `comfy` (výchozí) — jazykovým modelem, který už běží ve ComfyUI. Appka
+      pak nepotřebuje výstup do internetu vůbec.
+    - `online` — původní cesta přes Google / MyMemory.
+    - `off` — nepřekládat.
+    """
     text = str(text or "").strip()
     if not text:
         return {"success": True, "translated": "", "provider": "none"}
     if not bool(CONFIG.get("translate_prompt", True)):
         return {"success": False, "translated": "", "provider": "disabled",
                 "error": "Překlad je v config.json vypnutý."}
+
+    backend = str(CONFIG.get("translate_backend") or "comfy").strip().lower()
+    if backend in ("off", "none", "disabled"):
+        return {"success": False, "translated": "", "provider": "disabled",
+                "error": "Překlad je vypnutý (translate_backend=off)."}
+
+    if backend != "online":
+        from .translate_comfy import translate_via_comfy
+        try:
+            return translate_via_comfy(text, _clean_lang(source, "cs"), _clean_lang(target, "en"))
+        except Exception as e:
+            log.warning("Překlad přes ComfyUI nevyšel: %s", e)
+            if not bool(CONFIG.get("translate_allow_internet_fallback", False)):
+                # Výchozí stav: appka nechodí mimo lokální síť ani na záskok.
+                return {"success": False, "translated": "", "provider": "comfy",
+                        "error": f"Překlad přes ComfyUI nevyšel: {e}"}
+            log.info("Zkouším záložní překlad po internetu (translate_allow_internet_fallback=true).")
+
+    return translate_text_online(text, source, target)
+
+
+def translate_text_online(text: str, source: str = "cs", target: str = "en") -> Dict[str, object]:
+    """Překlad po internetu: Google GTX → Google clients5 → MyMemory."""
+    text = str(text or "").strip()
+    if not text:
+        return {"success": True, "translated": "", "provider": "none"}
 
     source = _clean_lang(source, "auto")
     target = _clean_lang(target, "en")

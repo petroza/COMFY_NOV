@@ -25,7 +25,7 @@ from .comfy_client import IMAGE_SUFFIXES, ComfyClient, normalize_image_suffix
 from .config import CONFIG
 from .presets import camera_preset_text
 from .runner import get_runner
-from .translate import translate_text_online
+from .translate import translate_text
 from .workflow import (ENHANCE_TOKENS_MAX, list_workflows, load_workflow, ltx_safe_size,
                        workflow_is_photo_edit)
 
@@ -167,13 +167,13 @@ def prepare_job_settings(settings: Dict[str, Any], preset: str, prompt: str,
         source = str(CONFIG.get("translate_source_lang") or "cs")
         target = str(CONFIG.get("translate_target_lang") or "en")
         main = build_comfy_prompt(settings["original_prompt"], preset, settings["camera_motion"])
-        tr = translate_text_online(main, source, target)
+        tr = translate_text(main, source, target)
         if tr.get("success") and str(tr.get("translated") or "").strip():
             prompt = clean_text(tr["translated"], 6000)
             settings["translated"] = True
             settings["translation_provider"] = tr.get("provider") or "online"
         if settings["original_negative_prompt"]:
-            neg_tr = translate_text_online(settings["original_negative_prompt"], source, target)
+            neg_tr = translate_text(settings["original_negative_prompt"], source, target)
             if neg_tr.get("success") and str(neg_tr.get("translated") or "").strip():
                 negative = clean_text(neg_tr["translated"], 4000)
     return settings, prompt, negative
@@ -435,7 +435,7 @@ async def h_translate_prompt(request: Request, method: str):
     text = clean_text(body.get("text"), 6000)
     source = clean_text(body.get("source") or CONFIG.get("translate_source_lang") or "cs", 12)
     target = clean_text(body.get("target") or CONFIG.get("translate_target_lang") or "en", 12)
-    result = translate_text_online(text, source or "cs", target or "en")
+    result = translate_text(text, source or "cs", target or "en")
     if not result.get("success") or not str(result.get("translated") or "").strip():
         # Frontend bere neúspěšný překlad jako fatální a job vůbec neodešle.
         # V interní síti bez výstupu do internetu by tím byla appka nepoužitelná,
@@ -708,7 +708,7 @@ async def h_update_pending_job(request: Request, method: str):
     if clean_text(settings.get("input_language") or "en", 12) == "cs":
         source = str(CONFIG.get("translate_source_lang") or "cs")
         target = str(CONFIG.get("translate_target_lang") or "en")
-        tr = translate_text_online(build_comfy_prompt(prompt_input, preset, settings["camera_motion"]),
+        tr = translate_text(build_comfy_prompt(prompt_input, preset, settings["camera_motion"]),
                                    source, target)
         if tr.get("success") and str(tr.get("translated") or "").strip():
             prompt = clean_text(tr["translated"], 6000)
@@ -718,7 +718,7 @@ async def h_update_pending_job(request: Request, method: str):
             settings["translated"] = False
             settings["translation_provider"] = "none"
         if negative_input:
-            neg_tr = translate_text_online(negative_input, source, target)
+            neg_tr = translate_text(negative_input, source, target)
             if neg_tr.get("success") and str(neg_tr.get("translated") or "").strip():
                 negative = clean_text(neg_tr["translated"], 4000)
 
@@ -995,10 +995,27 @@ async def h_diagnostics(request: Request, method: str):
         f"{len(projects)} aktivních: " + ", ".join(p["name"] for p in projects) if projects
         else "Žádný projekt — chybí soubory ve workflows/.")
 
-    tr = translate_text_online("kočka", "cs", "en")
-    add("Překlad promptu CZ→EN", "ok" if tr.get("success") else "warn",
-        f"Funguje přes {tr.get('provider')} (kočka → {tr.get('translated')})." if tr.get("success")
-        else "Nedostupný (appka nemá výstup do internetu). Prompt se pošle nepřeložený.")
+    backend = str(CONFIG.get("translate_backend") or "comfy").strip().lower()
+    if backend == "online":
+        add("Překladač", "warn", "Nastavený je online překlad (Google / MyMemory) — "
+                                 "appka kvůli tomu potřebuje výstup do internetu. "
+                                 "Pro provoz bez internetu přepni translate_backend na \"comfy\".")
+    elif backend in ("off", "none", "disabled"):
+        add("Překladač", "warn", "Překlad je vypnutý, prompt jde do ComfyUI tak, jak ho napíšeš.")
+    else:
+        from .translate_comfy import availability
+        avail = availability(client) if online else {"ok": False, "reason": "ComfyUI neodpovídá."}
+        add("Překladač", "ok" if avail.get("ok") else "bad",
+            f"Jazykový model ve ComfyUI: {avail.get('encoder')} (výstup přes {avail.get('sink')}). "
+            f"Appka nepotřebuje internet." if avail.get("ok")
+            else f"Překlad přes ComfyUI nejde — {avail.get('reason')}")
+
+    if backend not in ("off", "none", "disabled"):
+        tr = translate_text("kočka sedí na okně", "cs", "en")
+        add("Zkouška překladu CZ→EN", "ok" if tr.get("success") else "warn",
+            f"„kočka sedí na okně“ → „{tr.get('translated')}“ (přes {tr.get('provider')})."
+            if tr.get("success")
+            else f"Nepovedlo se: {tr.get('error')} Prompt se pošle nepřeložený.")
 
     workers = []
     for wid, wx in workers_payload().items():

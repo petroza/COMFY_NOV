@@ -74,6 +74,33 @@ Když appku používá víc lidí najednou:
 - Zvonek v liště zapíná **upozornění (zvuk + systémová notifikace)**, až render
   dojde — u několikaminutových renderů se u toho nedá sedět.
 
+## Provoz bez internetu
+
+Appka je navržená tak, aby si vystačila s lokální sítí — jediné, s čím mluví, je vaše ComfyUI.
+
+**Překlad promptu** dělá jazykový model, který ve ComfyUI už běží: LTX 2.3 šablona načítá
+**Gemma 3 12B Instruct** jako text encoder a ta umí česky. Appka jí pošle malé textové workflow
+(`LTXAVTextEncoderLoader` → `TextGenerateLTX2Prompt` → `PreviewAny`) a přečte si výsledek
+z historie. Žádný další model se instalovat nemusí.
+
+**Fonty** jsou uložené v `web/fonts/`. Dřív si je CSS tahalo z Google Fonts, takže prohlížeč při
+každém otevření appky volal ven — teď se nestahuje nic.
+
+Nastavení v `config.json`:
+
+| Hodnota `translate_backend` | Co dělá |
+|---|---|
+| `comfy` (výchozí) | Překládá Gemma ve ComfyUI. Bez internetu. |
+| `online` | Původní Google / MyMemory. **Vyžaduje internet.** |
+| `off` | Nepřekládá se, prompt jde tak, jak ho napíšeš. |
+
+Když překlad přes ComfyUI selže, appka **na internet sama nesáhne** — jen to napíše do chyby jobu.
+Záskok po internetu se dá zapnout přes `translate_allow_internet_fallback: true`.
+
+Že to tak doopravdy je, hlídají testy v `tests/test_no_internet.py`: odchytávají `requests`
+a hlásí každý cizí host, a navíc kontrolují, že si frontend nikde netahá fonty ani skripty.
+V Diagnostice je vidět, který model překládá a že appka internet nepotřebuje.
+
 ## Testy
 
 ```bash
@@ -120,8 +147,9 @@ akordeon **01 Základ … 06 Odeslání**, pravý panel **Detail jobu**, přepí
   něco řídí. U LTX 2.3 se schovají a nepatchují: šablona má pevný rozpis sigem (`ManualSigmas`) a `cfg = 1`,
   a přepisovat je hodnotou z formuláře dělalo z videa šum.
 - Fronta s živým průběhem přímo z ComfyUI (WebSocket, fallback na polling), zrušení, rerun, editace pending jobu, změna vstupní fotky, mazání, hromadné akce a stažení výsledků.
-- Automatický překlad promptu CZ→EN na pozadí. Když appka nemá výstup do internetu, prompt se pošle
-  v původním jazyce a nic se nezablokuje (na webu překlad selhat nesměl).
+- Automatický překlad promptu CZ→EN na pozadí — **jazykovým modelem, který už běží ve ComfyUI**,
+  takže appka nepotřebuje výstup do internetu (viz *Provoz bez internetu*). Když překlad nevyjde,
+  prompt se pošle v původním jazyce a nic se nezablokuje.
 - **Diagnostika** v UI: dostupnost ComfyUI, API i file báze, WebSocket, GPU/VRAM, modely z `object_info`,
   workflow šablony, složky, DB a překladač.
 - **Setup** v UI: adresa ComfyUI, předpona API, TLS a timeout — s tlačítkem *Vyzkoušet spojení*.
@@ -141,7 +169,8 @@ akordeon **01 Základ … 06 Odeslání**, pravý panel **Detail jobu**, přepí
 | `comfylocal/compat.py` | API kompatibilní s `api.php` (aby fungoval přenesený frontend) |
 | `comfylocal/server.py` | Servírování UI, stránka Setup, uložení adresy ComfyUI |
 | `comfylocal/projects.py` | Projekty = workflow šablony ze složky `workflows/` |
-| `comfylocal/translate.py` | Překlad promptu CZ→EN (Google GTX + fallbacky) |
+| `comfylocal/translate.py` | Volba překladače (`comfy` / `online` / `off`) + záložní online překlad |
+| `comfylocal/translate_comfy.py` | Překlad jazykovým modelem ve ComfyUI — bez internetu |
 | `comfylocal/__main__.py` | `python -m comfylocal` |
 | `web/` | UI (HTML/CSS/JS, bez frameworků) |
 | `workflows/` | ComfyUI **API** workflow šablony (i2v, FLF2V, photo edit) |
