@@ -926,7 +926,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 
 /* Admin: workflow je datově nejširší panel, proto zabere celý řádek. */
 .admin-workflows-panel{grid-column:1/-1}
-.workflow-table-wrap{width:100%;overflow-x:auto}
+.workflow-table-wrap{width:100%;overflow-x:auto;margin-top:28px}
 .workflow-table{min-width:980px}
 .workflow-table th:nth-child(1){width:27%}
 .workflow-table th:nth-child(2){width:9%}
@@ -935,4 +935,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .workflow-table th:last-child{width:10%}
 .workflow-table td:nth-child(4){overflow-wrap:anywhere}
 
-@media(max-width:1050px){.admin-workflows-panel{grid-column:auto}}
+@media(max-width:1050px){
+  .admin-workflows-panel{grid-column:auto}
+  .workflow-table-wrap{margin-top:22px}
+}
