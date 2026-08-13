@@ -61,7 +61,24 @@
 
     <section class="panel">
       <div class="panel-head"><h2>Projekty / workflow</h2></div>
-      <div class="panel-body"><div id="projectsList">…</div></div>
+      <div class="panel-body">
+        <p class="small">Tady přidáš nebo odebereš API workflow. Velké modely <code>.safetensors</code>
+          zůstávají v ComfyUI; kontrola níže ukáže, které soubory konkrétní workflow potřebuje a co chybí.</p>
+        <form id="workflowUploadForm" class="user-form" enctype="multipart/form-data">
+          <div class="user-form-row">
+            <div class="field"><label for="workflowFile">Workflow JSON (Export API)</label>
+              <input id="workflowFile" type="file" accept=".json,application/json" required></div>
+            <div class="field"><label class="checkline" style="margin-top:24px">
+              <input id="workflowReplace" type="checkbox"><span>Přepsat existující</span></label></div>
+          </div>
+          <div class="actions user-form-actions">
+            <button class="btn primary" type="submit">Nahrát workflow</button>
+            <a class="btn ghost" id="openComfyLink" href="#" target="_blank" rel="noopener">Otevřít ComfyUI</a>
+            <span class="small" id="workflowMsg"></span>
+          </div>
+        </form>
+        <div id="projectsList">…</div>
+      </div>
     </section>
 
   </div>
@@ -124,10 +141,33 @@ async function loadControl(){
 }
 async function doStartComfy(){const d=await api('start_comfy','POST',{});alert(d.message||d.error||'');loadControl();}
 async function doRestartRunner(){if(!confirm('Restartovat render loop?'))return;const d=await api('request_worker_restart','POST',{});alert(d.message||d.error||'');loadControl();}
-async function loadProjects(){const d=await api('projects');const box=document.getElementById('projectsList');
+function modelSummary(w){
+  if(w.error)return `<span class="diag-bad"><b>CHYBA</b> ${esc(w.error)}</span>`;
+  if((w.missing_models||[]).length)return `<span class="diag-bad"><b>CHYBÍ</b> ${esc(w.missing_models.join(', '))}</span>`;
+  const models=w.models||[];
+  return models.length?`<span class="diag-ok"><b>OK</b></span><div class="small">${models.map(esc).join('<br>')}</div>`:'<span class="small">Bez modelových souborů</span>';
+}
+let WORKFLOWS=[];
+function renderWorkflowFiles(d){const box=document.getElementById('projectsList');
   if(!d.success){box.innerHTML='<div class="small">'+esc(d.error||'Nelze načíst')+'</div>';return}
-  box.innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Projekt</th><th>Vstup</th><th>Workflow</th></tr></thead><tbody>'+
-    (d.projects||[]).map(p=>`<tr><td><b>${esc(p.name)}</b></td><td>${esc(p.input_type)}</td><td class="small">${esc(p.workflow_file||'—')}</td></tr>`).join('')+'</tbody></table></div>';}
+  WORKFLOWS=d.workflows||[];
+  if(d.comfy_url){const a=document.getElementById('openComfyLink');a.href=String(d.comfy_url).replace(/\/api\/?$/,'/');}
+  box.innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Projekt</th><th>Stav</th><th>Typ</th><th>Modely v ComfyUI</th><th></th></tr></thead><tbody>'+
+    WORKFLOWS.map((w,i)=>`<tr><td><b>${esc(w.name)}</b><div class="small">${esc(w.canonical_name)} · ${esc(w.nodes||'?')} nodů</div></td>`+
+      `<td><span class="tag ${w.enabled?'on':'off'}">${w.enabled?'aktivní':'vypnutý'}</span></td><td>${esc(w.kind||'—')}</td>`+
+      `<td>${modelSummary(w)}</td><td><div class="row-actions">`+
+      `<button class="btn ghost" type="button" onclick="toggleWorkflow(${i},${w.enabled?'false':'true'})">${w.enabled?'Vypnout':'Zapnout'}</button>`+
+      `<button class="btn red icon-btn" type="button" title="Odebrat workflow" onclick="deleteWorkflow(${i})">✕</button>`+
+      `</div></td></tr>`).join('')+'</tbody></table></div>';}
+async function loadProjects(){renderWorkflowFiles(await api('list_workflow_files'));}
+async function toggleWorkflow(index,enabled){const name=(WORKFLOWS[index]||{}).canonical_name;if(!name)return;const d=await api('toggle_workflow','POST',{filename:name,enabled});
+  document.getElementById('workflowMsg').textContent=d.message||d.error||'';if(d.success)renderWorkflowFiles(d);}
+async function deleteWorkflow(index){const name=(WORKFLOWS[index]||{}).canonical_name;if(!name)return;if(!confirm(`Odebrat workflow ${name}? Zůstane obnovitelná záloha.`))return;
+  const d=await api('delete_workflow','POST',{filename:name});document.getElementById('workflowMsg').textContent=d.message||d.error||'';if(d.success)renderWorkflowFiles(d);}
+document.getElementById('workflowUploadForm').addEventListener('submit',async e=>{e.preventDefault();const f=document.getElementById('workflowFile').files[0];if(!f)return;
+  const fd=new FormData();fd.append('workflow',f);if(document.getElementById('workflowReplace').checked)fd.append('replace','1');
+  const msg=document.getElementById('workflowMsg');msg.textContent='Nahrávám a kontroluji…';
+  try{const r=await fetch(`${API}?action=upload_workflow`,{method:'POST',body:fd,credentials:'same-origin'});const d=await r.json();msg.textContent=d.message||d.error||'';if(d.success){e.target.reset();renderWorkflowFiles(d)}}catch(err){msg.textContent='Nahrání selhalo: '+err.message}});
 async function loadMe(){const d=await api('me');if(d.success)document.getElementById('meChip').innerHTML=esc(d.username)+' <b>'+esc(d.role)+'</b>';}
 loadMe();loadUsers();loadControl();loadProjects();
 setInterval(loadControl,15000);

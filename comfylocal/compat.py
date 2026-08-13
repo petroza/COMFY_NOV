@@ -26,6 +26,8 @@ from .config import CONFIG
 from .presets import camera_preset_text
 from .runner import get_runner
 from .translate import translate_text
+from .workflow_admin import (list_workflow_files, remove_workflow, save_workflow,
+                             set_workflow_enabled)
 from .workflow import (ENHANCE_TOKENS_MAX, list_workflows, load_workflow, ltx_safe_size,
                        workflow_is_photo_edit)
 
@@ -406,6 +408,72 @@ async def h_delete_user(request: Request, method: str):
         return fail("Musí zůstat alespoň jeden aktivní správce.")
     users_mod.delete_user(user_id)
     return ok({"users": users_mod.list_users()})
+
+
+# ── workflow a modely (admin) ────────────────────────────────────────────────
+async def h_list_workflow_files(request: Request, method: str):
+    if not is_admin(request):
+        return fail("Jen pro správce.", 403)
+    return ok({
+        "workflows": list_workflow_files(CONFIG.workflows_dir, ComfyClient()),
+        "projects": db.list_projects(active_only=False),
+        "comfy_url": str(CONFIG.get("comfy_url") or ""),
+    })
+
+
+async def h_upload_workflow(request: Request, method: str):
+    if method != "POST":
+        return fail("Method not allowed", 405)
+    if not is_admin(request):
+        return fail("Jen pro správce.", 403)
+    form = await request.form()
+    upload = form.get("workflow") or form.get("file")
+    if upload is None or not getattr(upload, "filename", ""):
+        return fail("Vyber JSON workflow soubor.")
+    replace = str(form.get("replace") or "").strip().lower() in ("1", "true", "yes", "on")
+    try:
+        raw = await upload.read()
+        target = save_workflow(CONFIG.workflows_dir, str(upload.filename), raw, replace=replace)
+        projects_mod.sync_projects()
+    except (ValueError, FileExistsError) as exc:
+        return fail(str(exc))
+    except Exception as exc:
+        log.exception("Nahrání workflow selhalo")
+        return fail(f"Workflow se nepodařilo uložit: {exc}")
+    return ok({"message": f"Workflow {target.name} byl nahrán.",
+               "workflows": list_workflow_files(CONFIG.workflows_dir, ComfyClient())})
+
+
+async def h_toggle_workflow(request: Request, method: str):
+    if method != "POST":
+        return fail("Method not allowed", 405)
+    if not is_admin(request):
+        return fail("Jen pro správce.", 403)
+    body = await _json_body(request)
+    try:
+        target = set_workflow_enabled(CONFIG.workflows_dir, clean_text(body.get("filename"), 240),
+                                      bool(body.get("enabled")))
+        projects_mod.sync_projects()
+    except (ValueError, FileNotFoundError, FileExistsError) as exc:
+        return fail(str(exc))
+    return ok({"message": f"Workflow je nyní {'zapnutý' if target.name.endswith('.json') else 'vypnutý'}.",
+               "workflows": list_workflow_files(CONFIG.workflows_dir, ComfyClient())})
+
+
+async def h_delete_workflow(request: Request, method: str):
+    if method != "POST":
+        return fail("Method not allowed", 405)
+    if not is_admin(request):
+        return fail("Jen pro správce.", 403)
+    body = await _json_body(request)
+    try:
+        backup = remove_workflow(CONFIG.workflows_dir, clean_text(body.get("filename"), 240))
+        projects_mod.sync_projects()
+    except (ValueError, FileNotFoundError) as exc:
+        return fail(str(exc))
+    return ok({"message": "Workflow byl odebrán. Záloha zůstala v workflows/_removed/.",
+               "backup": backup.name,
+               "workflows": list_workflow_files(CONFIG.workflows_dir, ComfyClient())})
 
 
 # ── ovládání ComfyUI a render loopu ─────────────────────────
@@ -1086,4 +1154,8 @@ HANDLERS = {
     "list_users": h_list_users,
     "save_user": h_save_user,
     "delete_user": h_delete_user,
+    "list_workflow_files": h_list_workflow_files,
+    "upload_workflow": h_upload_workflow,
+    "toggle_workflow": h_toggle_workflow,
+    "delete_workflow": h_delete_workflow,
 }
