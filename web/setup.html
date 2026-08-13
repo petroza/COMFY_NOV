@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Setup — ComfyLocal</title>
 <link rel="icon" href="/favicon.ico" type="image/svg+xml">
-<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/app.css?v=20260813-setup-workflows">
 </head>
 <body>
 <div class="app" style="grid-template-columns:1fr">
@@ -15,6 +15,7 @@
     <div class="top-status"><div class="stats" id="stats"></div></div>
     <div class="top-actions">
       <a class="btn blue" href="/">App</a>
+      <a class="btn ghost" href="/admin" style="{{ADMIN_BTN_STYLE}}">Admin</a>
       <button class="btn ghost" onclick="load()">Obnovit</button>
     </div>
   </div>
@@ -55,9 +56,31 @@
         <div class="diag-grid" id="comfyBox" style="margin-top:14px"></div>
       </div>
     </section>
-    <section class="panel">
-      <div class="panel-head"><h2>Workflow ve složce workflows/</h2></div>
-      <div class="panel-body"><div class="diag-grid" id="wfBox"></div></div>
+    <section class="panel admin-workflows-panel" style="{{ADMIN_WORKFLOW_STYLE}}">
+      <div class="panel-head"><h2>Projekty / workflow</h2></div>
+      <div class="panel-body">
+        <p class="small">Tady přidáš nebo odebereš API workflow. Velké modely <code>.safetensors</code>
+          zůstávají v ComfyUI; kontrola níže ukáže, které soubory konkrétní workflow potřebuje a co chybí.</p>
+        <form id="workflowUploadForm" class="user-form" enctype="multipart/form-data">
+          <div class="workflow-upload-row">
+            <div class="field workflow-file-field"><label for="workflowFile">Workflow JSON (Export API)</label>
+              <div class="workflow-file-picker">
+                <input id="workflowFile" class="workflow-file-input" type="file" accept=".json,application/json" required>
+                <label class="workflow-file-button" for="workflowFile"><span aria-hidden="true">＋</span> Vybrat JSON</label>
+                <span id="workflowFileName" class="workflow-file-name">Žádný soubor nevybrán</span>
+              </div>
+            </div>
+            <label class="checkline workflow-replace">
+              <input id="workflowReplace" type="checkbox"><span>Přepsat existující workflow</span></label>
+          </div>
+          <div class="actions user-form-actions">
+            <button class="btn primary" type="submit">Nahrát workflow</button>
+            <a class="btn ghost" id="openComfyLink" href="#" target="_blank" rel="noopener">Otevřít ComfyUI</a>
+            <span class="small" id="workflowMsg"></span>
+          </div>
+        </form>
+        <div id="projectsList">…</div>
+      </div>
     </section>
     <section class="panel">
       <div class="panel-head"><h2>Cesty a data</h2></div>
@@ -93,6 +116,7 @@
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const CAN_MANAGE_WORKFLOWS={{IS_ADMIN}};
 function rows(box,items){box.innerHTML=items.map(([k,v,cls])=>
   `<div>${esc(k)}</div><div class="${cls||''}"><b>${esc(v)}</b></div><div></div>`).join('')}
 
@@ -113,10 +137,6 @@ async function load(){
     ['Právě používaná báze souborů',c.resolved_files_base],
     ['PIN',d.pin_required?'zapnutý':'vypnutý (otevřeno v síti)',d.pin_required?'diag-ok':'diag-warn'],
   ]);
-  $('wfBox').innerHTML=d.workflows.map(w=>
-    `<div>${esc(w.name)}</div><div class="${w.error?'diag-bad':'diag-ok'}"><b>${esc(w.error?'CHYBA':w.kind)}</b></div>`+
-    `<div>${esc(w.error||((w.nodes||0)+' nodů'))}</div>`).join('')+
-    d.projects.map(p=>`<div>projekt: ${esc(p.name)}</div><div class="diag-ok"><b>AKTIVNÍ</b></div><div>${esc(p.workflow_file)}</div>`).join('');
   rows($('pathBox'),Object.entries(d.paths));
   $('configBox').textContent=JSON.stringify(d.config,null,2);
 
@@ -140,6 +160,49 @@ async function load(){
     ' — interní firemní certifikát projde v prohlížeči, ale Python má vlastní seznam autorit;'+
     ' proto se používá systémové úložiště. Když ani to nepomůže, dej cestu k CA balíčku,'+
     ' teprve jako poslední možnost ověřování vypni.';
+  if(CAN_MANAGE_WORKFLOWS)await loadWorkflowProjects();
+}
+
+async function workflowApi(action,method='GET',body=null){
+  const opt={method,credentials:'same-origin',headers:{}};
+  if(body){opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(body)}
+  try{const r=await fetch(`/api.php?action=${action}`,opt);const t=await r.text();
+    try{return t?JSON.parse(t):{}}catch(e){return {success:false,error:'Nečitelná odpověď serveru'}}
+  }catch(e){return {success:false,error:'Síťová chyba: '+e.message}}
+}
+function modelSummary(w){
+  if(w.error)return `<span class="diag-bad"><b>CHYBA</b> ${esc(w.error)}</span>`;
+  if((w.missing_models||[]).length)return `<span class="diag-bad"><b>CHYBÍ</b> ${esc(w.missing_models.join(', '))}</span>`;
+  const models=w.models||[];
+  return models.length?`<span class="diag-ok"><b>OK</b></span><div class="small">${models.map(esc).join('<br>')}</div>`:'<span class="small">Bez modelových souborů</span>';
+}
+let WORKFLOWS=[];
+function renderWorkflowFiles(d){const box=$('projectsList');
+  if(!d.success){box.innerHTML='<div class="small">'+esc(d.error||'Nelze načíst')+'</div>';return}
+  WORKFLOWS=d.workflows||[];
+  if(d.comfy_url)$('openComfyLink').href=String(d.comfy_url).replace(/\/api\/?$/,'/');
+  box.innerHTML='<div class="workflow-table-wrap"><table class="tbl workflow-table"><thead><tr><th>Projekt</th><th>Stav</th><th>Typ</th><th>Modely v ComfyUI</th><th></th></tr></thead><tbody>'+
+    WORKFLOWS.map((w,i)=>`<tr><td><b>${esc(w.name)}</b><div class="small">${esc(w.canonical_name)} · ${esc(w.nodes||'?')} nodů</div></td>`+
+      `<td><span class="tag ${w.enabled?'on':'off'}">${w.enabled?'aktivní':'vypnutý'}</span></td><td>${esc(w.kind||'—')}</td>`+
+      `<td>${modelSummary(w)}</td><td><div class="row-actions">`+
+      `<button class="btn ghost" type="button" onclick="toggleWorkflow(${i},${w.enabled?'false':'true'})">${w.enabled?'Vypnout':'Zapnout'}</button>`+
+      `<button class="btn red icon-btn" type="button" title="Odebrat workflow" onclick="deleteWorkflow(${i})">✕</button>`+
+      `</div></td></tr>`).join('')+'</tbody></table></div>';}
+async function loadWorkflowProjects(){renderWorkflowFiles(await workflowApi('list_workflow_files'));}
+async function toggleWorkflow(index,enabled){const name=(WORKFLOWS[index]||{}).canonical_name;if(!name)return;const d=await workflowApi('toggle_workflow','POST',{filename:name,enabled});
+  $('workflowMsg').textContent=d.message||d.error||'';if(d.success)renderWorkflowFiles(d);}
+async function deleteWorkflow(index){const name=(WORKFLOWS[index]||{}).canonical_name;if(!name)return;if(!confirm(`Odebrat workflow ${name}? Zůstane obnovitelná záloha.`))return;
+  const d=await workflowApi('delete_workflow','POST',{filename:name});$('workflowMsg').textContent=d.message||d.error||'';if(d.success)renderWorkflowFiles(d);}
+function updateWorkflowFileName(){const input=$('workflowFile');const name=$('workflowFileName');const file=input.files&&input.files[0];
+  name.textContent=file?file.name:'Žádný soubor nevybrán';name.classList.toggle('selected',!!file);}
+if(CAN_MANAGE_WORKFLOWS){
+  $('workflowFile').addEventListener('change',updateWorkflowFileName);
+  $('workflowUploadForm').addEventListener('submit',async e=>{e.preventDefault();const f=$('workflowFile').files[0];if(!f)return;
+    const fd=new FormData();fd.append('workflow',f);if($('workflowReplace').checked)fd.append('replace','1');
+    const msg=$('workflowMsg');msg.textContent='Nahrávám a kontroluji…';
+    try{const r=await fetch('/api.php?action=upload_workflow',{method:'POST',body:fd,credentials:'same-origin'});const d=await r.json();
+      msg.textContent=d.message||d.error||'';if(d.success){e.target.reset();updateWorkflowFileName();renderWorkflowFiles(d)}}
+    catch(err){msg.textContent='Nahrání selhalo: '+err.message}});
 }
 
 function status(msg,cls){const box=$('saveStatus');box.className='lang-status show '+(cls||'');box.innerHTML=msg}

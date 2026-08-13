@@ -9,11 +9,11 @@ echo ==================================================================
 
 REM 1) Python
 where py >nul 2>nul
-if %errorlevel%==0 (
+if not errorlevel 1 (
   set "PY=py -3"
 ) else (
   where python >nul 2>nul
-  if %errorlevel%==0 (
+  if not errorlevel 1 (
     set "PY=python"
   ) else (
     echo [CHYBA] Python 3.10+ neni nainstalovany.

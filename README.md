@@ -203,6 +203,16 @@ v promptu se na ně odkazuje jako `<Picture 1>` a `<Picture 2>`.
 
 ### Import workflow z ComfyUI
 
+Workflow lze spravovat také bez příkazové řádky na stránce **Admin → Projekty / workflow**:
+
+* nahrát nový JSON z **Workflow → Export (API)**,
+* workflow zapnout nebo vypnout,
+* odebrat ho se zachováním obnovitelné kopie ve `workflows/_removed/`,
+* zkontrolovat všechny checkpointy, text encodery, VAE a LoRA, které používá, včetně chybějících souborů.
+
+Velké soubory modelů (`.safetensors`, `.gguf` apod.) se touto stránkou nemažou. Spravují se přímo
+v instalaci ComfyUI; Admin bezpečně spravuje jen aplikační workflow a ukazuje jejich závislosti.
+
 ComfyUI umí workflow uložit dvěma způsoby a **appka umí jen ten druhý**:
 
 * *Workflow → Export* — podklad pro editor (`nodes`, `links`, `definitions.subgraphs`).

@@ -76,7 +76,12 @@ async def setup_page(request: Request) -> Response:
     if not authenticated(request):
         return RedirectResponse("/")
     html = (WEB_DIR / "setup.html").read_text(encoding="utf-8")
-    return HTMLResponse(html.replace("{{APP_VERSION}}", APP_VERSION))
+    admin = is_admin(request)
+    html = html.replace("{{APP_VERSION}}", APP_VERSION)
+    html = html.replace("{{ADMIN_BTN_STYLE}}", "" if admin else "display:none")
+    html = html.replace("{{ADMIN_WORKFLOW_STYLE}}", "" if admin else "display:none")
+    html = html.replace("{{IS_ADMIN}}", "true" if admin else "false")
+    return HTMLResponse(html)
 
 
 @app.get("/api/setup")

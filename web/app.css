@@ -923,3 +923,42 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .tbl .tag.admin{color:#c7d2fe;border-color:rgba(129,140,248,.55);background:rgba(129,140,248,.12)}
 .tbl .tag.off{color:#fca5a5;border-color:rgba(248,113,113,.45);background:rgba(248,113,113,.1)}
 .tbl .tag.on{color:#86efac;border-color:rgba(74,222,128,.4);background:rgba(74,222,128,.1)}
+
+/* Admin: workflow je datově nejširší panel, proto zabere celý řádek. */
+.admin-workflows-panel{grid-column:1/-1}
+.workflow-upload-row{display:grid;grid-template-columns:minmax(420px,720px) auto;gap:22px;align-items:end}
+.workflow-file-field{display:flex;flex-direction:column;gap:8px;min-width:0}
+.workflow-file-field>label{font-family:var(--display);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--fg-2);font-weight:600}
+.workflow-file-picker{height:50px;display:flex;align-items:center;gap:13px;padding:5px 16px 5px 6px;
+  border:1px solid var(--bd-2);border-radius:14px;background:rgba(8,8,28,.5);min-width:0;
+  transition:border-color .18s ease,box-shadow .18s ease,background .18s ease}
+.workflow-file-picker:focus-within{border-color:rgba(129,140,248,.75);background:rgba(20,20,52,.7);
+  box-shadow:0 0 0 3px rgba(99,102,241,.12)}
+.workflow-file-input{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;
+  pointer-events:none!important;overflow:hidden!important}
+.workflow-file-button{display:inline-flex!important;align-items:center;gap:7px;min-height:38px!important;padding:8px 14px!important;
+  border:1px solid rgba(129,140,248,.48);border-radius:10px;background:linear-gradient(135deg,rgba(99,102,241,.24),rgba(139,92,246,.12));
+  color:#e0e7ff!important;font-family:var(--display);font-size:12px!important;font-weight:650;letter-spacing:0!important;
+  text-transform:none!important;white-space:nowrap;cursor:pointer;transition:transform .16s ease,border-color .16s ease,background .16s ease}
+.workflow-file-button:hover{transform:translateY(-1px);border-color:rgba(165,180,252,.78);
+  background:linear-gradient(135deg,rgba(99,102,241,.36),rgba(139,92,246,.2))}
+.workflow-file-button span{font-size:17px;line-height:1;color:#a5b4fc}
+.workflow-file-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--mut);font-size:13px}
+.workflow-file-name.selected{color:var(--fg);font-weight:600}
+.workflow-replace{height:50px;margin:0 0 0 0;padding:0 4px;white-space:nowrap}
+.workflow-table-wrap{width:100%;overflow-x:auto;margin-top:28px}
+.workflow-table{min-width:980px}
+.workflow-table th:nth-child(1){width:27%}
+.workflow-table th:nth-child(2){width:9%}
+.workflow-table th:nth-child(3){width:9%}
+.workflow-table th:nth-child(4){width:45%}
+.workflow-table th:last-child{width:10%}
+.workflow-table td:nth-child(4){overflow-wrap:anywhere}
+
+@media(max-width:1050px){
+  .admin-workflows-panel{grid-column:auto}
+  .workflow-upload-row{grid-template-columns:1fr}
+  .workflow-replace{height:auto;padding:2px 0}
+  .workflow-table-wrap{margin-top:22px}
+}

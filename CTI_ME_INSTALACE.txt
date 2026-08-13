@@ -1,0 +1,14 @@
+COMFYNOVA — INSTALACE
+====================
+
+Windows: rozbal ZIP a spusť INSTALOVAT_A_SPUSTIT_WINDOWS.bat.
+Linux: rozbal ZIP a spusť: bash INSTALOVAT_A_SPUSTIT_LINUX.sh
+
+Průvodce se zeptá na adresu ComfyUI, port, jméno prvního správce a heslo.
+Pro ComfyUI na stejném PC/serveru použij obvykle http://127.0.0.1:8000/
+Ostatní počítače v síti otevřou http://IP_SERVERU:ZVOLENY_PORT/
+
+Po prvním startu vznikne účet správce a heslo se odstraní z config.json.
+Překlad používá model uvnitř ComfyUI; internetová překladová záloha je vypnutá.
+Velké AI modely nejsou součástí ZIPu a musí být nainstalované v ComfyUI.
+MiniMax H3 je v tomto balíčku ověřený v režimu I2V i Ref2V se dvěma referencemi.

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Admin — PZ COMFY VIDEO REMOTE</title>
 <link rel="icon" href="/favicon.ico" type="image/svg+xml">
-<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/app.css?v=20260813-admin-picker">
 </head>
 <body>
 <div class="app" style="grid-template-columns:1fr">
@@ -57,11 +57,6 @@
         <p class="small">Spuštění ComfyUI používá <code>comfy_start_cmd</code> (a volitelně <code>comfy_dir</code>)
           z <code>config.json</code>. Vše běží jen v lokální síti — žádné FTP, žádný vzdálený worker.</p>
       </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-head"><h2>Projekty / workflow</h2></div>
-      <div class="panel-body"><div id="projectsList">…</div></div>
     </section>
 
   </div>
@@ -124,12 +119,8 @@ async function loadControl(){
 }
 async function doStartComfy(){const d=await api('start_comfy','POST',{});alert(d.message||d.error||'');loadControl();}
 async function doRestartRunner(){if(!confirm('Restartovat render loop?'))return;const d=await api('request_worker_restart','POST',{});alert(d.message||d.error||'');loadControl();}
-async function loadProjects(){const d=await api('projects');const box=document.getElementById('projectsList');
-  if(!d.success){box.innerHTML='<div class="small">'+esc(d.error||'Nelze načíst')+'</div>';return}
-  box.innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Projekt</th><th>Vstup</th><th>Workflow</th></tr></thead><tbody>'+
-    (d.projects||[]).map(p=>`<tr><td><b>${esc(p.name)}</b></td><td>${esc(p.input_type)}</td><td class="small">${esc(p.workflow_file||'—')}</td></tr>`).join('')+'</tbody></table></div>';}
 async function loadMe(){const d=await api('me');if(d.success)document.getElementById('meChip').innerHTML=esc(d.username)+' <b>'+esc(d.role)+'</b>';}
-loadMe();loadUsers();loadControl();loadProjects();
+loadMe();loadUsers();loadControl();
 setInterval(loadControl,15000);
 </script>
 </body>
