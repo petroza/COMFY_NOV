@@ -5,3 +5,6 @@ requests>=2.31
 websocket-client>=1.7
 # Aby Python veril systemovemu uloziste certifikatu (firemni interni CA):
 truststore>=0.9
+# Lokální OCR kontrola výstupních obrázků (žádné cloudové API).
+rapidocr-onnxruntime>=1.4.4,<2
+Pillow>=12,<13

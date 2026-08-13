@@ -2,6 +2,7 @@
 """HTTP server ComfyLocal — servíruje UI, statiku a API kompatibilní s api.php."""
 from __future__ import annotations
 
+import json
 import logging
 
 from typing import Any, Dict
@@ -10,8 +11,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import db, projects as projects_mod, users as users_mod
-from .compat import (APP_VERSION, PIN_COOKIE, authenticated, is_admin, login_required,
+from . import db, image_batch, projects as projects_mod, users as users_mod
+from .compat import (APP_VERSION, PIN_COOKIE, authenticated, current_user, is_admin, login_required,
                      pin_required, router as api_router, users_enabled)
 from .config import CONFIG
 from .logging_setup import configure_logging
@@ -82,6 +83,95 @@ async def setup_page(request: Request) -> Response:
     html = html.replace("{{ADMIN_WORKFLOW_STYLE}}", "" if admin else "display:none")
     html = html.replace("{{IS_ADMIN}}", "true" if admin else "false")
     return HTMLResponse(html)
+
+
+@app.get("/image-batch")
+async def image_batch_page(request: Request) -> Response:
+    if not authenticated(request):
+        return RedirectResponse("/")
+    html = (WEB_DIR / "image-batch.html").read_text(encoding="utf-8")
+    return HTMLResponse(html.replace("{{APP_VERSION}}", APP_VERSION))
+
+
+def _batch_visible(request: Request, batch: Dict[str, Any]) -> bool:
+    user = current_user(request) or {}
+    return bool(batch) and (not batch.get("user_id") or user.get("role") == "admin" or
+                            int(batch.get("user_id") or 0) == int(user.get("id") or -1))
+
+
+@app.get("/api/image-batches")
+async def image_batches_list(request: Request):
+    if not authenticated(request):
+        return {"success": False, "error": "Nepřihlášeno."}
+    return {"success": True, "batches": image_batch.list_batches(current_user(request))}
+
+
+@app.post("/api/image-batches")
+async def image_batches_create(request: Request):
+    if not authenticated(request):
+        return {"success": False, "error": "Nepřihlášeno."}
+    try:
+        form = await request.form()
+        upload = form.get("json_file")
+        if upload is None or not getattr(upload, "filename", ""):
+            return {"success": False, "error": "Vyber JSON soubor."}
+        raw = await upload.read()
+        if len(raw) > 100 * 1024 * 1024:
+            return {"success": False, "error": "JSON je větší než 100 MB."}
+        jobs = json.loads(raw.decode("utf-8-sig"))
+        if not isinstance(jobs, list):
+            return {"success": False, "error": "Kořen JSONu musí být seznam položek."}
+        try:
+            limit = max(0, int(str(form.get("limit") or "0")))
+        except ValueError:
+            limit = 0
+        batch = image_batch.create_batch(
+            jobs, str(upload.filename), str(form.get("mode") or "hybrid"),
+            str(form.get("style_prompt") or image_batch.STYLE_DEFAULT), limit,
+            current_user(request))
+        return {"success": True, "batch": batch}
+    except (ValueError, UnicodeError, json.JSONDecodeError) as exc:
+        return {"success": False, "error": f"JSON nelze načíst: {exc}"}
+    except Exception as exc:
+        log.exception("Založení obrázkové dávky selhalo")
+        return {"success": False, "error": str(exc)}
+
+
+@app.get("/api/image-batches/{batch_id}")
+async def image_batch_detail(request: Request, batch_id: int):
+    if not authenticated(request):
+        return {"success": False, "error": "Nepřihlášeno."}
+    batch = image_batch.get_batch(batch_id)
+    if not _batch_visible(request, batch):
+        return {"success": False, "error": "Dávka neexistuje nebo k ní nemáš přístup."}
+    return {"success": True, "batch": batch}
+
+
+@app.post("/api/image-batches/{batch_id}/{action}")
+async def image_batch_control(request: Request, batch_id: int, action: str):
+    if not authenticated(request):
+        return {"success": False, "error": "Nepřihlášeno."}
+    batch = image_batch.get_batch(batch_id)
+    if not _batch_visible(request, batch):
+        return {"success": False, "error": "Dávka neexistuje nebo k ní nemáš přístup."}
+    try:
+        return {"success": True, "batch": image_batch.control_batch(batch_id, action)}
+    except ValueError as exc:
+        return {"success": False, "error": str(exc)}
+
+
+@app.get("/api/image-batches/{batch_id}/preview")
+async def image_batch_preview(request: Request, batch_id: int):
+    if not authenticated(request):
+        return PlainTextResponse("Nepřihlášeno.", status_code=401)
+    batch = image_batch.get_batch(batch_id)
+    if not _batch_visible(request, batch):
+        return PlainTextResponse("Nenalezeno.", status_code=404)
+    path = image_batch.latest_output_path(batch_id)
+    if not path:
+        return PlainTextResponse("Náhled zatím není.", status_code=404)
+    media_type = "image/webp" if path.suffix.lower() == ".webp" else "image/png"
+    return FileResponse(path, media_type=media_type, headers={"Cache-Control": "no-store"})
 
 
 @app.get("/api/setup")
@@ -309,5 +399,6 @@ async def on_startup() -> None:
         log.info("Účet správce %r vytvořen z bootstrap_admin; heslo z config.json vymazáno.", created)
     projects_mod.sync_projects()
     start_runner()
+    image_batch.start_runner()
     log.info("ComfyLocal %s běží — ComfyUI: %s (API %s)",
              APP_VERSION, CONFIG.comfy_base, CONFIG.comfy_api_base)

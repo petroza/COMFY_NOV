@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Dávkové obrázky — PZ COMFY</title>
+<link rel="icon" href="/favicon.ico" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css?v=20260813-image-batch">
+<style>
+.batch-layout{display:grid;grid-template-columns:minmax(390px,520px) minmax(520px,1fr);gap:24px;align-items:start}
+.batch-stack{display:grid;gap:24px}.batch-drop{position:relative;border:1px dashed var(--bd-2);border-radius:16px;padding:22px;background:var(--glass);transition:.2s}
+.batch-drop:hover,.batch-drop.drag{border-color:#818cf8;background:rgba(129,140,248,.08)}
+.batch-drop input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.batch-file-title{font-weight:700;font-size:16px}.batch-file-sub{color:var(--mut);margin-top:5px;font-size:13px}
+.batch-form{display:grid;gap:16px}.batch-options{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.batch-story-lock{display:grid;gap:4px;padding:13px 15px;border:1px solid rgba(94,230,168,.35);border-radius:13px;background:rgba(94,230,168,.07)}.batch-story-lock b{color:#74e8b2}.batch-story-lock span{color:var(--mut);font-size:12px;line-height:1.45}
+.batch-form textarea{min-height:160px;resize:vertical}.batch-card{border:1px solid var(--bd);background:var(--glass);border-radius:14px;padding:14px;cursor:pointer}
+.batch-card.active{border-color:#818cf8;box-shadow:0 0 0 2px rgba(129,140,248,.13)}
+.batch-card-top{display:flex;justify-content:space-between;gap:12px;align-items:center}.batch-card-meta{font-size:12px;color:var(--mut);margin-top:7px}
+.batch-progress{height:9px;background:rgba(255,255,255,.07);border-radius:20px;overflow:hidden;margin-top:10px}.batch-progress>i{display:block;height:100%;background:linear-gradient(90deg,#5b5cf0,#8b9cff);border-radius:inherit}
+.batch-state{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}.batch-state.running{color:#5ee6a8}.batch-state.paused{color:#ffd166}.batch-state.done{color:#5ee6a8}.batch-state.stopped,.batch-state.error{color:#ff738a}
+.batch-hero{display:grid;grid-template-columns:minmax(280px,430px) 1fr;gap:22px}.preview-box{aspect-ratio:1;border-radius:18px;overflow:hidden;border:1px solid var(--bd);background:radial-gradient(circle at 50% 35%,rgba(129,140,248,.12),transparent 60%),var(--glass);display:grid;place-items:center}
+.preview-box img{width:100%;height:100%;object-fit:contain}.preview-empty{color:var(--mut);text-align:center;padding:30px}.batch-metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.metric{border:1px solid var(--bd);background:var(--glass);border-radius:13px;padding:14px}.metric b{display:block;font-size:25px;margin-top:5px}.metric span{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.08em}
+.recent-list{display:grid;gap:8px;margin-top:16px}.recent-row{display:grid;grid-template-columns:70px 85px 1fr 70px;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--bd);border-radius:11px;font-size:12px}.recent-row .subject{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.muted{color:var(--mut)}
+@media(max-width:1050px){.batch-layout{grid-template-columns:1fr}.batch-hero{grid-template-columns:minmax(250px,390px) 1fr}}
+@media(max-width:720px){.batch-hero,.batch-options{grid-template-columns:1fr}.recent-row{grid-template-columns:55px 70px 1fr}.recent-row>:last-child{display:none}}
+</style>
+</head>
+<body>
+<div class="app" style="grid-template-columns:1fr"><main class="main">
+  <div class="top">
+    <div class="top-left"><div class="top-title">PZ COMFY · DÁVKOVÉ OBRÁZKY</div></div>
+    <div class="top-status"><span class="chip">ComfyLocal <b>v{{APP_VERSION}}</b></span></div>
+    <div class="top-actions"><a class="btn blue" href="/">App</a><a class="btn ghost" href="/admin">Admin</a><a class="btn ghost" href="/setup">Setup</a><form method="post" action="/logout" style="display:contents"><button class="btn ghost" type="submit">Odhlásit</button></form></div>
+  </div>
+  <div class="content" style="grid-template-columns:1fr;max-width:1740px">
+    <div class="batch-layout">
+      <div class="batch-stack">
+        <section class="panel"><div class="panel-head"><h2>Nová dávka</h2></div><div class="panel-body">
+          <form id="createForm" class="batch-form">
+            <label class="batch-drop" id="drop"><input id="jsonFile" name="json_file" type="file" accept=".json,application/json" required><div class="batch-file-title" id="fileTitle">Vybrat nebo přetáhnout JSON</div><div class="batch-file-sub" id="fileSub">Soubor quiz-image-jobs.json s položkami item, image a prompt</div></label>
+            <div class="batch-options"><div class="field"><label>Model pro obrázky</label><select id="mode" name="mode"><option value="zimage">Z-Image Turbo — nejrychlejší</option><option value="flux1">FLUX.1 Dev FP8</option><option value="flux2">FLUX.2 Dev + Turbo</option><option value="hybrid">Automaticky — Z-Image / Qwen</option><option value="qwen">Qwen Lightning</option></select><div class="small">Vyber jeden model pro celou novou dávku. FLUX.1 Dev má nekomerční licenci; FLUX.2 je nejnáročnější na paměť.</div></div><div class="field"><label>Počet obrázků</label><input id="limit" name="limit" type="number" min="0" value="0"><div class="small">0 = celý JSON</div></div></div>
+            <div class="batch-story-lock"><b>Styl příběhu je automaticky uzamčený</b><span>Obrázky se stejným <code>item</code> použijí stejný model a základní seed, aby na sebe výtvarně navazovaly. OCR změní seed pouze u obrázku s nalezeným textem.</span></div>
+            <div class="field"><label>Nouzový styl</label><textarea id="stylePrompt" name="style_prompt"></textarea><div class="small">Použije se jen tehdy, když položka v JSONu nemá vlastní prompt. Jinak se původní prompt odešle přesně beze změny.</div></div>
+            <div class="actions"><button class="btn primary" type="submit">Nahrát a připravit dávku</button><span class="small" id="uploadMsg"></span></div>
+            <div class="small">Výstup: WebP 800×800 · prompt: přesně z JSONu · kontrola: lokální OCR. Pauza i Stop se projeví po dokončení právě generovaného obrázku. Stránku můžeš zavřít — server pokračuje dál.</div>
+          </form>
+        </div></section>
+        <section class="panel"><div class="panel-head"><h2>Dávky</h2><button class="btn ghost" type="button" onclick="loadBatches()">Obnovit</button></div><div class="panel-body"><div id="batchList" class="batch-stack"><div class="small">Načítám…</div></div></div></section>
+      </div>
+      <section class="panel"><div class="panel-head"><h2 id="detailTitle">Průběh dávky</h2><span id="detailState" class="batch-state"></span></div><div class="panel-body" id="detail"><div class="preview-empty">Vyber dávku vlevo nebo nahraj nový JSON.</div></div></section>
+    </div>
+  </div>
+</main></div>
+<script>
+const DEFAULT_STYLE=`Soft polished digital children's picture-book illustration, contemporary European animated storybook style, subtle gouache and colored-pencil texture, oversized rounded heads, large glossy dark eyes with bright catchlights, rosy pink cheeks, tiny rounded noses, warm friendly expressions, soft clean dark-brown outlines, gentle airbrushed shading, tactile fluffy fur or soft hair, cheerful but controlled palette of coral red, burnt orange, mustard yellow, teal, sage green and warm brown, warm creamy paper background with a pale turquoise vignette, a few tiny flowers or grass strokes near the feet, centered readable silhouette, simple uncluttered square composition, generous breathing space, professionally finished illustration for children age 4-8. No text, no letters, no words, no title, no caption, no logo, no watermark, no photorealism, no 3D render, no anime, no harsh shadows.`;
+document.getElementById('stylePrompt').value=DEFAULT_STYLE;
+const esc=v=>String(v==null?'':v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let batches=[],selectedId=0,pollTimer=null,userSelected=false;
+const stateName=s=>({paused:'pozastaveno',running:'běží',done:'hotovo',stopped:'zastaveno'}[s]||s||'');
+function filePicked(){const f=document.getElementById('jsonFile').files[0];document.getElementById('fileTitle').textContent=f?f.name:'Vybrat nebo přetáhnout JSON';document.getElementById('fileSub').textContent=f?`${(f.size/1024/1024).toFixed(1)} MB`:'Soubor quiz-image-jobs.json s položkami item, image a prompt'}
+document.getElementById('jsonFile').addEventListener('change',filePicked);
+const drop=document.getElementById('drop');['dragenter','dragover'].forEach(x=>drop.addEventListener(x,e=>{e.preventDefault();drop.classList.add('drag')}));['dragleave','drop'].forEach(x=>drop.addEventListener(x,e=>{e.preventDefault();drop.classList.remove('drag')}));
+document.getElementById('createForm').addEventListener('submit',async e=>{e.preventDefault();const msg=document.getElementById('uploadMsg');const file=document.getElementById('jsonFile').files[0];if(!file){msg.textContent='Nejdřív vyber JSON.';return}msg.textContent='Nahrávám a připravuji položky…';const fd=new FormData(e.target);try{const r=await fetch('/api/image-batches',{method:'POST',body:fd,credentials:'same-origin'});const d=await r.json();if(!d.success){msg.textContent=d.error||'Nahrání selhalo.';return}selectedId=d.batch.id;msg.textContent=`Připraveno ${d.batch.total} obrázků. Spusť dávku tlačítkem Start.`;await loadBatches();await loadDetail(selectedId)}catch(err){msg.textContent='Síťová chyba: '+err.message}});
+async function loadBatches(){try{const r=await fetch('/api/image-batches',{credentials:'same-origin'});const d=await r.json();if(!d.success)return;batches=d.batches||[];batches.sort((a,b)=>(b.status==='running')-(a.status==='running')||(+b.id)-(+a.id));const running=batches.find(b=>b.status==='running');if(!selectedId&&batches.length)selectedId=(running||batches[0]).id;if(!userSelected&&running&&+selectedId!==+running.id){selectedId=running.id;loadDetail(selectedId)}renderBatches()}catch(e){}}
+function renderBatches(){const box=document.getElementById('batchList');if(!batches.length){box.innerHTML='<div class="small">Zatím tu není žádná dávka.</div>';return}box.innerHTML=batches.map(b=>`<div class="batch-card ${+b.id===+selectedId?'active':''}" onclick="selectBatch(${b.id})"><div class="batch-card-top"><b>#${b.id} ${esc(b.name)}</b><span class="batch-state ${esc(b.status)}">${esc(stateName(b.status))}</span></div><div class="batch-card-meta">${b.done_count||0} hotovo · ${b.error_count||0} chyb · ${b.total||0} celkem · ${esc(b.mode)}</div><div class="batch-progress"><i style="width:${Math.max(0,Math.min(100,b.progress||0))}%"></i></div></div>`).join('')}
+async function selectBatch(id){selectedId=+id;userSelected=true;renderBatches();await loadDetail(id)}
+async function loadDetail(id=selectedId){if(!id)return;try{const r=await fetch(`/api/image-batches/${id}`,{credentials:'same-origin'});const d=await r.json();if(!d.success)return;renderDetail(d.batch);const ix=batches.findIndex(x=>+x.id===+id);if(ix>=0)batches[ix]=d.batch;renderBatches()}catch(e){}}
+function renderDetail(b){
+  document.getElementById('detailTitle').textContent=`#${b.id} ${b.name}`;
+  const st=document.getElementById('detailState');st.className='batch-state '+b.status;st.textContent=stateName(b.status);
+  const active=b.status==='running',canStart=['paused','stopped'].includes(b.status);
+  const repair=(canStart&&b.done_count>0)?`<button class="btn ghost" onclick="scanOcr(${b.id})">OCR zkontrolovat hotové</button>`:'';
+  const clean=canStart?`<button class="btn red" onclick="restartClean(${b.id})">Smazat výstupy a začít znovu</button>`:'';
+  const ocrChip=`<span class="chip ${b.ocr_available?'ok':'bad'}">OCR ${b.ocr_available?'aktivní':'chybí'}</span>`;
+  const buttons=`<div class="actions">${canStart?`<button class="btn primary" onclick="control(${b.id},'resume')">${b.started_at?'Pokračovat':'Spustit'}</button>`:''}${repair}${clean}${active?`<button class="btn ghost" onclick="control(${b.id},'pause')">Pauza</button><button class="btn red" onclick="control(${b.id},'stop')">Stop po obrázku</button>`:''}${ocrChip}<span class="small">Výstup: ${esc(b.output_dir||'')}</span></div>`;
+  const preview=b.latest_file?`<img src="/api/image-batches/${b.id}/preview?t=${Date.now()}" alt="Poslední hotový obrázek">`:'<div class="preview-empty">Náhled se objeví po prvním obrázku.</div>';
+  const recent=(b.recent||[]).map(x=>`<div class="recent-row"><b>#${x.source_index}</b><span class="batch-state ${x.status}">${x.status==='done'?'hotovo':'chyba'}</span><span class="subject" title="${esc(x.subject)}${x.ocr_text?' · OCR: '+esc(x.ocr_text):''}">${esc(x.subject)}${x.retry_count?` · OCR opakování ${x.retry_count}×`:''}</span><span class="muted">${x.seconds||0} s</span></div>`).join('');
+  document.getElementById('detail').innerHTML=`<div class="batch-hero"><div class="preview-box">${preview}</div><div><div class="batch-metrics"><div class="metric"><span>Hotovo</span><b>${b.done_count||0}</b></div><div class="metric"><span>Chyby</span><b>${b.error_count||0}</b></div><div class="metric"><span>OCR opravy</span><b>${b.ocr_retry_count||0}</b></div><div class="metric"><span>Celkem</span><b>${b.total||0}</b></div><div class="metric"><span>Průběh</span><b>${b.progress||0} %</b></div></div><div class="batch-progress" style="height:12px;margin:16px 0"><i style="width:${b.progress||0}%"></i></div>${buttons}</div></div><div class="recent-list">${recent||'<div class="small">Zatím bez výsledků.</div>'}</div>`
+}
+async function repairText(id){if(!confirm('Zálohovat hotové Z-Image výstupy a přegenerovat je přes Qwen bez textu?'))return;await control(id,'retry-zimage-done')}
+async function scanOcr(id){if(!confirm('OCR zkontroluje všechny hotové obrázky. Nalezené nápisy zazálohuje a vrátí do fronty s novým seedem. Pokračovat?'))return;await control(id,'scan-ocr')}
+async function restartClean(id){if(!confirm('TRVALE smazat všechny výstupy, vadné zálohy i manifest této dávky a začít znovu od prvního obrázku?'))return;await control(id,'restart-clean')}
+async function control(id,action){try{const r=await fetch(`/api/image-batches/${id}/${action}`,{method:'POST',credentials:'same-origin'});const d=await r.json();if(!d.success){alert(d.error||'Akce selhala.');return}renderDetail(d.batch);await loadBatches()}catch(e){alert('Síťová chyba: '+e.message)}}
+loadBatches().then(()=>loadDetail());pollTimer=setInterval(()=>{loadBatches();if(selectedId)loadDetail(selectedId)},3000);
+</script>
+</body>
+</html>
