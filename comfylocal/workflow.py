@@ -280,6 +280,10 @@ def auto_patch_workflow_nodes(wf: dict, values: Dict[str, Any],
     text_candidates: List[tuple] = []
     positive_patched = False
     negative_patched = False
+    is_minimax_h3 = any(
+        isinstance(n, dict) and str(n.get("class_type") or "").lower() == "minimaxh3imagetovideo"
+        for n in wf.values()
+    )
 
     for node_id, node in list(wf.items()):
         if not isinstance(node, dict):
@@ -291,6 +295,31 @@ def auto_patch_workflow_nodes(wf: dict, values: Dict[str, Any],
         cls = class_type.lower()
         title = _node_title(node).lower()
         label = f"{node_id}:{class_type}"
+
+        # MiniMax H3 má prompt, šířku a výšku přímo v hlavním nodu. V exportu
+        # bývají rozměry připojené z ResolutionSelectoru; obecný linked patch by
+        # tam omylem přepsal hodnotu `megapixels`. Přímé INT hodnoty ComfyUI
+        # přijímá a přesně odpovídají rozměrům z formuláře.
+        if cls == "minimaxh3imagetovideo":
+            if prompt and isinstance(inputs.get("prompt"), str):
+                old = str(inputs["prompt"])
+                inputs["prompt"] = prompt
+                patched.append(f"positive {label}.prompt: {old[:40]!r} -> UI prompt")
+                positive_patched = True
+            if width:
+                old = inputs.get("width")
+                inputs["width"] = int(width)
+                patched.append(f"width {label}.width: {old} -> {width}")
+            if height:
+                old = inputs.get("height")
+                inputs["height"] = int(height)
+                patched.append(f"height {label}.height: {old} -> {height}")
+
+        # Délku MiniMax workflow počítá z jediného PrimitiveFloatu v sekundách.
+        if is_minimax_h3 and cls == "primitivefloat" and duration and isinstance(inputs.get("value"), (int, float)):
+            old = inputs["value"]
+            inputs["value"] = float(duration)
+            patched.append(f"duration {label}.value: {old} -> {inputs['value']}")
 
         # 1) VSTUPNÍ OBRÁZEK
         is_image_loader = (
@@ -316,8 +345,13 @@ def auto_patch_workflow_nodes(wf: dict, values: Dict[str, Any],
         # 2) PROMPT / NEGATIVE PROMPT
         # U LTX 2.3 exportů bývá hlavní prompt jako PrimitiveStringMultiline.inputs.value
         # s titulkem "Prompt", ne jako CLIPTextEncode.inputs.text.
-        text_keys = [k for k in ("text", "prompt", "caption", "positive", "negative")
-                     if k in inputs and isinstance(inputs.get(k), str)]
+        # MiniMax má pouze jeden pozitivní `prompt`; nemá samostatný negative
+        # input. Ten jsme zpracovali výše a nesmí se znovu heuristicky označit
+        # za negativní podle slov obsažených v původní filmové ukázce.
+        text_keys = [] if cls == "minimaxh3imagetovideo" else [
+            k for k in ("text", "prompt", "caption", "positive", "negative")
+            if k in inputs and isinstance(inputs.get(k), str)
+        ]
         if "value" in inputs and isinstance(inputs.get("value"), str):
             value_is_prompt_text = (
                 ("primitive" in cls and "string" in cls) or "string" in cls or
@@ -333,7 +367,8 @@ def auto_patch_workflow_nodes(wf: dict, values: Dict[str, Any],
             current_text = str(inputs.get(key) or "")
             is_text_node = (
                 any(x in cls for x in ("text", "prompt", "encode", "gemma", "clip", "string")) or
-                any(x in title for x in ("prompt", "text", "caption", "positive", "negative"))
+                any(x in title for x in ("prompt", "text", "caption", "positive", "negative")) or
+                key in ("prompt", "caption", "positive", "negative")
             )
             if is_text_node:
                 negative_hint = (
@@ -342,7 +377,8 @@ def auto_patch_workflow_nodes(wf: dict, values: Dict[str, Any],
                         ("low quality", "ugly", "deformed", "blur", "flicker", "watermark", "cartoon"))
                 )
                 positive_hint = (not negative_hint) and (
-                    "positive" in title or key == "positive" or "prompt" in title or "caption" in title or
+                    "positive" in title or key in ("prompt", "caption", "positive") or
+                    "prompt" in title or "caption" in title or
                     ("primitive" in cls and "string" in cls and key == "value")
                 )
                 text_candidates.append((node_id, node, key, label, negative_hint, positive_hint))
