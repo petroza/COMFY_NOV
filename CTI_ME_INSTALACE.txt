@@ -11,3 +11,4 @@ Ostatní počítače v síti otevřou http://IP_SERVERU:ZVOLENY_PORT/
 Po prvním startu vznikne účet správce a heslo se odstraní z config.json.
 Překlad používá model uvnitř ComfyUI; internetová překladová záloha je vypnutá.
 Velké AI modely nejsou součástí ZIPu a musí být nainstalované v ComfyUI.
+MiniMax H3 je v tomto balíčku ověřený v režimu I2V; Ref2V vyžaduje samostatný Export (API).
