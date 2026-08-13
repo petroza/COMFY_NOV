@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Admin — PZ COMFY VIDEO REMOTE</title>
 <link rel="icon" href="/favicon.ico" type="image/svg+xml">
-<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/app.css?v=20260813-admin-wide">
 </head>
 <body>
 <div class="app" style="grid-template-columns:1fr">
@@ -59,7 +59,7 @@
       </div>
     </section>
 
-    <section class="panel">
+    <section class="panel admin-workflows-panel">
       <div class="panel-head"><h2>Projekty / workflow</h2></div>
       <div class="panel-body">
         <p class="small">Tady přidáš nebo odebereš API workflow. Velké modely <code>.safetensors</code>
@@ -152,7 +152,7 @@ function renderWorkflowFiles(d){const box=document.getElementById('projectsList'
   if(!d.success){box.innerHTML='<div class="small">'+esc(d.error||'Nelze načíst')+'</div>';return}
   WORKFLOWS=d.workflows||[];
   if(d.comfy_url){const a=document.getElementById('openComfyLink');a.href=String(d.comfy_url).replace(/\/api\/?$/,'/');}
-  box.innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Projekt</th><th>Stav</th><th>Typ</th><th>Modely v ComfyUI</th><th></th></tr></thead><tbody>'+
+  box.innerHTML='<div class="workflow-table-wrap"><table class="tbl workflow-table"><thead><tr><th>Projekt</th><th>Stav</th><th>Typ</th><th>Modely v ComfyUI</th><th></th></tr></thead><tbody>'+
     WORKFLOWS.map((w,i)=>`<tr><td><b>${esc(w.name)}</b><div class="small">${esc(w.canonical_name)} · ${esc(w.nodes||'?')} nodů</div></td>`+
       `<td><span class="tag ${w.enabled?'on':'off'}">${w.enabled?'aktivní':'vypnutý'}</span></td><td>${esc(w.kind||'—')}</td>`+
       `<td>${modelSummary(w)}</td><td><div class="row-actions">`+

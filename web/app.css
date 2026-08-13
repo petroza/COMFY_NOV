@@ -923,3 +923,16 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .tbl .tag.admin{color:#c7d2fe;border-color:rgba(129,140,248,.55);background:rgba(129,140,248,.12)}
 .tbl .tag.off{color:#fca5a5;border-color:rgba(248,113,113,.45);background:rgba(248,113,113,.1)}
 .tbl .tag.on{color:#86efac;border-color:rgba(74,222,128,.4);background:rgba(74,222,128,.1)}
+
+/* Admin: workflow je datově nejširší panel, proto zabere celý řádek. */
+.admin-workflows-panel{grid-column:1/-1}
+.workflow-table-wrap{width:100%;overflow-x:auto}
+.workflow-table{min-width:980px}
+.workflow-table th:nth-child(1){width:27%}
+.workflow-table th:nth-child(2){width:9%}
+.workflow-table th:nth-child(3){width:9%}
+.workflow-table th:nth-child(4){width:45%}
+.workflow-table th:last-child{width:10%}
+.workflow-table td:nth-child(4){overflow-wrap:anywhere}
+
+@media(max-width:1050px){.admin-workflows-panel{grid-column:auto}}
